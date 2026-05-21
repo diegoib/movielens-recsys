@@ -1,0 +1,73 @@
+[project]
+name = "movielens-recsys"
+version = "0.1.0"
+description = "Recommender system trained on MovieLens dataset"
+readme = "README.md"
+requires-python = "==3.12.*"
+
+[dependency-groups]
+data = [
+    "pydantic==2.12.5",
+    "pandas==2.3.3",
+    "polars==1.37.1",
+    "pyarrow==22.0.0",
+    "tqdm==4.67.1",
+    "kaggle>=1.6",
+]
+onnx = [
+    "onnx==1.20.1",
+    "onnxruntime==1.23.2",
+    "onnxscript==0.5.7",
+]
+torch = [
+    "torch==2.7.1",
+    "torchvision==0.22.1",
+]
+train = [
+    "lightning[pytorch-extra]==2.5.6",
+    "mlflow==3.8.1",
+    "scikit-learn==1.8.0",
+]
+dev = [
+    "pre-commit==4.2.0",
+    "ipykernel==7.1.0",
+    "requests==2.32.3",
+    "tyro==1.0.4",
+    "ruff>=0.9",
+]
+test = [
+    "mypy==1.19.1",
+    "pytest==9.0.2",
+]
+all = [
+    { include-group = "data" },
+    { include-group = "onnx" },
+    { include-group = "torch" },
+    { include-group = "train" },
+    { include-group = "dev" },
+    { include-group = "test" },
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[tool.semantic_release]
+version_toml = [
+    "pyproject.toml:project.version"
+]
+
+[tool.semantic_release.branches.main]
+match = "(main|master)"
+prerelease = false
+
+[tool.semantic_release.branches.dev]
+match = ".*"
+prerelease_token = "rc"
+prerelease = true
