@@ -1,3 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(make lint *)",
+      "Bash(uv sync *)",
+      "Bash(make test *)",
+      "Bash(make fmt *)",
+      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('/workspace/.github/workflows/ci.yml'\\)\\); print\\('ci.yml YAML válido'\\)\")",
+      "Bash(make help *)"
+    ]
+  },
   "outputStyle": "Learning"
 }

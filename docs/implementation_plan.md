@@ -88,7 +88,8 @@ movielens-recsys/
 │   └── train.py                  # entrypoint de entrenamiento
 ├── infra/
 │   ├── bootstrap/
-│   │   └── create_state_bucket.sh
+│   │   ├── enable_apis.sh
+│   │   └── setup_oidc.sh
 │   ├── modules/
 │   │   ├── gcs/
 │   │   ├── artifact-registry/
@@ -96,9 +97,8 @@ movielens-recsys/
 │   │   ├── compute/
 │   │   ├── cloud-run/
 │   │   └── secrets/
-│   └── environments/
-│       ├── dev/
-│       └── prod/
+│   ├── main.tf
+│   └── terraform.tfvars.example
 ├── docker/
 │   ├── training/Dockerfile
 │   ├── serving/Dockerfile
@@ -133,12 +133,8 @@ movielens-recsys/
 - [ ] Activar billing y configurar presupuesto con alerta en 25 €/mes
 - [ ] Habilitar APIs: `cloudrun.googleapis.com`, `compute.googleapis.com`, `artifactregistry.googleapis.com`, `secretmanager.googleapis.com`, `cloudbuild.googleapis.com`, `iam.googleapis.com`, `storage.googleapis.com`
 
-**Bootstrap de Terraform**
-- [ ] Crear `infra/bootstrap/create_state_bucket.sh`: crea el bucket GCS para el state de Terraform (este paso es manual, no gestionado por TF para evitar el problema del huevo y la gallina)
-- [ ] Ejecutar el script una sola vez: `bash infra/bootstrap/create_state_bucket.sh`
-
 **Estructura del repositorio**
-- [ ] Crear directorios vacíos con `.gitkeep`: `src/data/`, `src/features/`, `src/models/`, `src/serving/`, `src/simulator/`, `infra/modules/`, `infra/environments/dev/`, `infra/environments/prod/`, `docker/`, `dags/`, `tests/`
+- [ ] Crear directorios vacíos con `.gitkeep`: `src/data/`, `src/features/`, `src/models/`, `src/serving/`, `src/simulator/`, `infra/modules/`, `docker/`, `dags/`, `tests/`
 - [ ] Añadir `data/`, `mlruns/`, `.env` a `.gitignore`
 
 **Makefile base**
@@ -147,8 +143,6 @@ movielens-recsys/
 - [ ] Target `lint`: `uv run ruff check . && uv run mypy .`
 - [ ] Target `fmt`: `uv run ruff format .`
 - [ ] Target `test`: `uv run pytest`
-- [ ] Variable `ENV` con default `dev` para comandos Terraform
-
 **OIDC GitHub ↔ GCP**
 - [ ] Crear Workload Identity Pool y Provider en GCP para GitHub Actions
 - [ ] Service account `github-actions@<project>.iam.gserviceaccount.com` con roles mínimos (Artifact Registry Writer, Cloud Run Developer, etc.)
@@ -202,15 +196,14 @@ make tf-init ENV=dev
 **`modules/secrets/`**
 - [ ] Secret `kaggle-username` y `kaggle-key`: vacíos, se rellenan manualmente después de apply
 
-**Environments**
-- [ ] `environments/dev/main.tf`: usa módulos con configuración reducida (VM más pequeña, un solo bucket)
-- [ ] `environments/prod/main.tf`: configuración completa
-- [ ] Variables comunes en `environments/variables.tf`
+**Configuración**
+- [ ] `infra/main.tf`: bloque terraform + provider google + llamadas a módulos; estado local en `infra/terraform.tfstate` (gitignoreado)
+- [ ] `infra/terraform.tfvars.example`: placeholder con `project_id` y `region`
 
 ```makefile
-make tf-init ENV=dev
-make tf-plan ENV=dev
-make tf-apply ENV=dev
+make tf-init
+make tf-plan GCP_PROJECT_ID=<id>
+make tf-apply GCP_PROJECT_ID=<id>
 ```
 
 ---
