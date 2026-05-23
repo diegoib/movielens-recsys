@@ -28,8 +28,8 @@ lint: ## Run ruff check + mypy
 fmt: ## Format code with ruff
 	uv run ruff format .
 
-test: ## Run test suite (exit 5 = no tests collected, treated as OK)
-	uv run pytest --tb=short; EC=$$?; [ $$EC -eq 5 ] && exit 0 || exit $$EC
+test: ## Run test suite
+	uv run pytest --tb=short
 
 # ── Terraform ─────────────────────────────────────────────────────────────────
 
