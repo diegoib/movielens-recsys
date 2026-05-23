@@ -59,8 +59,15 @@ select = ["E", "F", "I", "UP"]
 ignore_missing_imports = true
 
 [tool.semantic_release]
-version_toml = [
-    "pyproject.toml:project.version"
+version_toml = ["pyproject.toml:project.version"]
+tag_format = "v{version}"
+commit_message = "chore(release): v{version} [skip ci]"
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+exclude_commit_patterns = [
+    "^chore\\(release\\)",
+    "^Merge",
 ]
 
 [tool.semantic_release.branches.main]
