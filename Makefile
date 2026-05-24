@@ -1,4 +1,4 @@
-GCP_PROJECT_ID ?= movielens-recsys
+GCP_PROJECT_ID ?= movielens-recsys-proj
 GCP_REGION ?= us-central1
 
 .PHONY: help setup lint fmt test \

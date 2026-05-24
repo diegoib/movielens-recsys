@@ -10,7 +10,7 @@ Scripts de configuración one-time para el proyecto en GCP. Ejecutar en orden.
 
 ```bash
 # 1. Crea el proyecto GCP (si no existe aún)
-gcloud projects create movielens-recsys --name="MovieLens RecSys"
+gcloud projects create movielens-recsys-proj --name="MovieLens RecSys"
 # Después: activa billing en console.cloud.google.com → Billing → Link account
 # Sin billing activo, enable_apis.sh fallará aunque seas el propietario.
 
