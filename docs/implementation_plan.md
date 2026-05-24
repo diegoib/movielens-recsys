@@ -168,11 +168,8 @@ make tf-init ENV=dev
 ### Módulos Terraform
 
 **`modules/gcs/`**
-- [ ] Bucket `data-raw-<project>`: datos crudos de MovieLens
-- [ ] Bucket `data-processed-<project>`: eventos y features en Parquet
-- [ ] Bucket `models-<project>`: checkpoints y archivos ONNX
-- [ ] Bucket `mlflow-artifacts-<project>`: artifacts de MLflow
-- [ ] Todos con versioning habilitado y lifecycle rule para borrar versiones >30 días
+- [ ] Bucket único `<project>-data`: prefijos `raw/`, `processed/`, `models/`, `mlflow-artifacts/`
+- [ ] Versioning habilitado y lifecycle rule para borrar versiones >30 días
 
 **`modules/artifact-registry/`**
 - [ ] Repositorio Docker `movielens-recsys` en la región elegida
@@ -190,7 +187,6 @@ make tf-init ENV=dev
   - Startup script: instala Docker, arranca Airflow con LocalExecutor
 
 **`modules/cloud-run/`**
-- [ ] Servicio `mlflow-server`: placeholder (imagen pública de MLflow), conectado al bucket de artifacts
 - [ ] Servicio `recsys-serving`: placeholder, se actualizará en Fase 6
 
 **`modules/secrets/`**
