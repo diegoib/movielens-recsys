@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-05-24)
+
+### Features
+
+- Infra setup ([#3](https://github.com/diegoib/movielens-recsys/pull/3),
+  [`795f8f8`](https://github.com/diegoib/movielens-recsys/commit/795f8f82c9d62a7e0e80f9022a918bf09a33d58a))
+
+
 ## v0.1.0 (2026-05-23)
 
 ### Features
