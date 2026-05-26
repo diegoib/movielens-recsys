@@ -1,5 +1,6 @@
 GCP_PROJECT_ID ?= movielens-recsys-proj
 GCP_REGION ?= us-central1
+GCP_ZONE ?= us-central1-a
 
 .PHONY: help setup lint fmt test \
         tf-init tf-plan tf-apply \
@@ -10,7 +11,8 @@ GCP_REGION ?= us-central1
         streaming-local streaming-deploy streaming-status \
         simulate simulate-gcp \
         airflow-deploy retrain-manual \
-        monitoring-local
+        monitoring-local \
+        datagen-vm-start datagen-vm-stop
 
 help: ## List all available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -135,3 +137,13 @@ retrain-manual: ## Manually trigger the weekly_retrain DAG
 
 monitoring-local: ## Start Prometheus + Grafana locally
 	docker compose up prometheus grafana
+
+# ── Datagen VM ────────────────────────────────────────────────────────────────
+
+datagen-vm-start: ## Arrancar datagen-vm en GCP
+	gcloud compute instances start datagen-vm \
+		--zone $(GCP_ZONE) --project $(GCP_PROJECT_ID)
+
+datagen-vm-stop: ## Apagar datagen-vm en GCP (después de generar los datos)
+	gcloud compute instances stop datagen-vm \
+		--zone $(GCP_ZONE) --project $(GCP_PROJECT_ID)

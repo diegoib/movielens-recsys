@@ -55,6 +55,7 @@ module "compute" {
   region          = var.region
   zone            = var.zone
   streaming_vm_sa = module.iam.jobs_sa_email
+  datagen_vm_sa   = module.iam.jobs_sa_email
 }
 
 module "cloud_run" {
@@ -69,6 +70,7 @@ module "secrets" {
   project_id = var.project_id
 }
 
+output "datagen_vm_ip"         { value = module.compute.datagen_vm_external_ip }
 output "bucket_name"           { value = module.gcs.bucket_name }
 output "bucket_url"            { value = module.gcs.bucket_url }
 output "repository_url"        { value = module.artifact_registry.repository_url }

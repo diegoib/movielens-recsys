@@ -6,13 +6,19 @@ variable "streaming_vm_sa" {
   description = "Service account email to attach to the streaming VM"
 }
 
+variable "datagen_vm_sa" {
+  type        = string
+  description = "Service account email to attach to the datagen VM"
+}
+
 # ── Streaming VM (e2-medium, preemptible) ─────────────────────────────────────
 
 resource "google_compute_instance" "streaming_vm" {
-  name         = "streaming-vm"
-  project      = var.project_id
-  zone         = var.zone
-  machine_type = "e2-medium"
+  name           = "streaming-vm"
+  project        = var.project_id
+  zone           = var.zone
+  machine_type   = "e2-medium"
+  desired_status = "TERMINATED"
 
   boot_disk {
     initialize_params {
@@ -55,10 +61,11 @@ resource "google_compute_instance" "streaming_vm" {
 # ── Airflow VM (e2-micro, free tier) ──────────────────────────────────────────
 
 resource "google_compute_instance" "airflow_vm" {
-  name         = "airflow-vm"
-  project      = var.project_id
-  zone         = var.zone
-  machine_type = "e2-micro"
+  name           = "airflow-vm"
+  project        = var.project_id
+  zone           = var.zone
+  machine_type   = "e2-micro"
+  desired_status = "TERMINATED"
 
   boot_disk {
     initialize_params {
@@ -84,6 +91,44 @@ resource "google_compute_instance" "airflow_vm" {
   EOT
 
   tags = ["airflow-vm"]
+}
+
+# ── Datagen VM (e2-highmem-4, stopped by default) ────────────────────────────
+
+resource "google_compute_instance" "datagen_vm" {
+  name           = "datagen-vm"
+  project        = var.project_id
+  zone           = var.zone
+  machine_type   = "e2-highmem-4"
+  desired_status = "TERMINATED"
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      size  = 50
+    }
+  }
+
+  network_interface {
+    network = "default"
+    access_config {}
+  }
+
+  service_account {
+    email  = var.datagen_vm_sa
+    scopes = ["cloud-platform"]
+  }
+
+  metadata_startup_script = <<-EOT
+    #!/bin/bash
+    set -euo pipefail
+    apt-get update -q
+    apt-get install -y python3 python3-pip git curl
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ln -sf /root/.local/bin/uv /usr/local/bin/uv
+  EOT
+
+  tags = ["datagen-vm"]
 }
 
 # ── Firewall rules ─────────────────────────────────────────────────────────────
@@ -126,4 +171,8 @@ output "streaming_vm_external_ip" {
 
 output "streaming_vm_internal_ip" {
   value = google_compute_instance.streaming_vm.network_interface[0].network_ip
+}
+
+output "datagen_vm_external_ip" {
+  value = google_compute_instance.datagen_vm.network_interface[0].access_config[0].nat_ip
 }
