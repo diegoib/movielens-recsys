@@ -123,7 +123,7 @@ resource "google_compute_instance" "datagen_vm" {
     #!/bin/bash
     set -euo pipefail
     apt-get update -q
-    apt-get install -y python3 python3-pip git curl
+    apt-get install -y python3 python3-pip git curl tmux
     curl -LsSf https://astral.sh/uv/install.sh | sh
     ln -sf /root/.local/bin/uv /usr/local/bin/uv
   EOT

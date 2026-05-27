@@ -176,38 +176,35 @@ gcloud compute instances describe datagen-vm \
     --format="value(status)"
 ```
 
-**3. Conectarse por SSH:**
+**3. (Solo la primera vez) Clonar el repositorio dentro de la VM:**
 
 ```bash
 gcloud compute ssh datagen-vm --project <tu-project-id> --zone us-central1-a
-```
-
-**4. Dentro de la VM — ejecutar el pipeline completo:**
-
-```bash
-# Clonar el repositorio (ajusta la URL a la tuya)
+# dentro de la VM:
 git clone https://github.com/<tu-usuario>/movielens-recsys.git
-cd movielens-recsys
-
-# Instalar dependencias de datos
-uv sync --group data
-
-# Descargar MovieLens (~250 MB)
-make data-download
-
-# Generar eventos (~30-90 min)
-make data-generate
-
-# Subir a GCS
-GCP_PROJECT_ID=<tu-project-id> make data-upload
+exit
 ```
 
-**5. Salir de la VM y apagarla:**
+**4. Lanzar el pipeline desacoplado de la terminal:**
 
 ```bash
-exit   # cierra la sesión SSH
-make datagen-vm-stop GCP_PROJECT_ID=<tu-project-id>
+make datagen-run GCP_PROJECT_ID=<tu-project-id>
 ```
+
+El comando termina inmediatamente en tu terminal local. El pipeline corre dentro de una sesión `tmux` en la VM — sobrevive a desconexiones SSH. Al terminar (incluyendo la subida a GCS), **la VM se apaga sola**.
+
+**5. Monitorizar el progreso (desde cualquier terminal, en cualquier momento):**
+
+```bash
+# Comprobación rápida sin conectarse
+make datagen-status GCP_PROJECT_ID=<tu-project-id>
+
+# Engancharse y ver la barra tqdm en vivo
+make datagen-attach GCP_PROJECT_ID=<tu-project-id>
+# Para desengancharse sin matar el proceso: Ctrl+B  D
+```
+
+> La VM en estado `TERMINATED` en la consola GCP es la señal definitiva de que el pipeline ha terminado correctamente (la propia VM se apaga al acabar). No hace falta `datagen-vm-stop`.
 
 ---
 
@@ -283,12 +280,15 @@ make tf-apply GCP_PROJECT_ID=<id>
 
 # Pipeline de datos (Ruta B — GCP)
 make datagen-vm-start GCP_PROJECT_ID=<id>
+
+# (Solo la primera vez) clonar el repo dentro de la VM
 gcloud compute ssh datagen-vm --project <id> --zone us-central1-a
-# (dentro de la VM)
-git clone https://github.com/<usuario>/movielens-recsys.git && cd movielens-recsys
-uv sync --group data
-make data-download && make data-generate
-GCP_PROJECT_ID=<id> make data-upload
-exit
-make datagen-vm-stop GCP_PROJECT_ID=<id>
+git clone https://github.com/<usuario>/movielens-recsys.git && exit
+
+# Lanzar el pipeline desacoplado (tmux, la VM se apaga sola al terminar)
+make datagen-run GCP_PROJECT_ID=<id>
+
+# Monitorizar
+make datagen-status GCP_PROJECT_ID=<id>   # comprobación rápida
+make datagen-attach GCP_PROJECT_ID=<id>   # ver tqdm en vivo (Ctrl+B D para desengancharse)
 ```

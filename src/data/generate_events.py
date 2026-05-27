@@ -4,7 +4,7 @@ Pipeline:
   1. Pre-compute lookup structures (monthly popularity, genre pools, user history).
   2. Group each user's ratings into sessions (gap > 60 min = new session).
   3. Per session: generate positive funnel + type-A/B negatives.
-  4. Write events to Parquet in batches to stay within memory limits.
+  4. Workers write parquet chunks directly to disk; main process merges at the end.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ FRAC_POPULAR = 0.40
 FRAC_GENRE = 0.40
 FRAC_COLLAB = 0.20
 POPULAR_TOP_K = 500  # movies kept per monthly bucket
-BATCH_SIZE = 1_000  # users per Parquet chunk
+USERS_PER_BATCH = 500  # users processed per worker task
 RANDOM_SEED = 42
 
 # Shared read-only state populated before Pool creation; inherited by fork workers
@@ -154,28 +154,35 @@ def _collab_pool(
 # ── Parallel worker ───────────────────────────────────────────────────────────
 
 
-def _process_user_task(args: tuple[int, list[tuple[int, int, float]]]) -> list[dict[str, Any]]:
-    """Generate events for one user.  Runs inside a Pool worker.
+def _process_batch_task(args: tuple[int, list[tuple[int, list[tuple[int, int, float]]]]]) -> str:
+    """Generate events for a batch of users and write them to a parquet chunk.
 
-    Uses _G (populated before Pool creation) which fork workers inherit via
-    copy-on-write — no serialisation cost for the large lookup structures.
-    Each worker gets a deterministic per-user RNG so results are reproducible
-    regardless of execution order or number of processes.
+    Returns the path of the written file so the main process only receives a
+    short string through IPC — not the ~700 dicts per user that the previous
+    design sent.  Workers free the event list from memory as soon as the
+    parquet file is flushed.
     """
-    uid, buf = args
-    rng = random.Random(RANDOM_SEED ^ uid)
-    sessions = _build_sessions(buf)
-    return _generate_user_events(
-        uid,
-        sessions,
-        _G["user_rated"][uid],
-        _G["popular_by_month"],
-        _G["genre_map"],
-        _G["genre_to_movies"],
-        _G["movie_to_users"],
-        _G["user_rated"],
-        rng,
-    )
+    batch_idx, user_batch = args
+    all_events: list[dict[str, Any]] = []
+    for uid, buf in user_batch:
+        rng = random.Random(RANDOM_SEED ^ uid)
+        sessions = _build_sessions(buf)
+        all_events.extend(
+            _generate_user_events(
+                uid,
+                sessions,
+                _G["user_rated"][uid],
+                _G["popular_by_month"],
+                _G["genre_map"],
+                _G["genre_to_movies"],
+                _G["movie_to_users"],
+                _G["user_rated"],
+                rng,
+            )
+        )
+    chunk = Path(_G["chunk_dir"]) / f"_batch_{batch_idx:04d}.parquet"
+    pl.DataFrame(all_events).write_parquet(chunk)
+    return str(chunk)
 
 
 # ── Session construction ───────────────────────────────────────────────────────
@@ -315,9 +322,6 @@ def _generate_user_events(  # noqa: PLR0913
 # ── Main entry point ───────────────────────────────────────────────────────────
 
 
-ROW_CHUNK_SIZE = 5_000_000  # write a parquet chunk every ~5M events
-
-
 def generate_events(
     output_path: Path | None = None,
     max_users: int | None = None,
@@ -346,6 +350,10 @@ def generate_events(
         user_rated = {k: v for k, v in user_rated.items() if k in keep}
         print(f"Limited to {max_users} users ({ratings_df.height:,} ratings).")
 
+    # chunk_dir must exist before forking so workers can write to it.
+    chunk_dir = PROCESSED_DIR / "_batches"
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+
     # Populate shared globals before forking so workers inherit them via COW.
     _G.update(
         genre_map=genre_map,
@@ -353,6 +361,7 @@ def generate_events(
         popular_by_month=popular_by_month,
         movie_to_users=movie_to_users,
         user_rated=user_rated,
+        chunk_dir=str(chunk_dir),
     )
 
     # Build per-user rating lists from sorted arrays.
@@ -372,35 +381,35 @@ def generate_events(
     tasks = list(user_ratings.items())
     del user_ratings
 
+    # Group users into batches; each worker writes one parquet file per batch
+    # and returns only a path string — avoiding 67 GB of IPC serialization.
+    batched_tasks = [
+        (batch_idx, tasks[i : i + USERS_PER_BATCH])
+        for batch_idx, i in enumerate(range(0, len(tasks), USERS_PER_BATCH))
+    ]
+
+    # Cap at 4 workers: beyond that, fork-induced COW copies of the shared dicts
+    # consume more RAM than the parallelism is worth on this dataset.
+    n_workers = min(os.cpu_count() or 4, 4)
+    print(
+        f"Processing {len(tasks):,} users in {len(batched_tasks)} batches"
+        f" across {n_workers} workers..."
+    )
+
     chunk_paths: list[Path] = []
-    batch_rows: list[dict[str, Any]] = []
-
-    def _flush_chunk() -> None:
-        chunk = PROCESSED_DIR / f"_chunk_{len(chunk_paths):04d}.parquet"
-        pl.DataFrame(batch_rows).write_parquet(chunk)
-        chunk_paths.append(chunk)
-        batch_rows.clear()
-
-    n_workers = os.cpu_count() or 4
-    print(f"Processing {len(tasks):,} users across {n_workers} workers...")
-
     with (
         Pool(processes=n_workers) as pool,
-        tqdm(total=len(tasks), desc="Generating events", unit="user") as pbar,
+        tqdm(total=len(batched_tasks), desc="Generating events", unit="batch") as pbar,
     ):
-        for events in pool.imap_unordered(_process_user_task, tasks, chunksize=50):
-            batch_rows.extend(events)
+        for path_str in pool.imap_unordered(_process_batch_task, batched_tasks):
+            chunk_paths.append(Path(path_str))
             pbar.update(1)
-            if len(batch_rows) >= ROW_CHUNK_SIZE:
-                _flush_chunk()
-
-    if batch_rows:
-        _flush_chunk()
 
     print("Merging chunks...")
     pl.scan_parquet([str(p) for p in chunk_paths]).sink_parquet(out)
     for p in chunk_paths:
         p.unlink()
+    chunk_dir.rmdir()
     print(f"Events saved to {out}")
 
 
