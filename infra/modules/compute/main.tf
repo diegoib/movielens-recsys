@@ -99,7 +99,7 @@ resource "google_compute_instance" "datagen_vm" {
   name           = "datagen-vm"
   project        = var.project_id
   zone           = var.zone
-  machine_type   = "e2-highmem-4"
+  machine_type   = "n2-standard-8"
   desired_status = "TERMINATED"
 
   boot_disk {

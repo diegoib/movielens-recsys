@@ -9,10 +9,12 @@ Pipeline:
 
 from __future__ import annotations
 
+import os
 import random
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
+from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,10 @@ FRAC_COLLAB = 0.20
 POPULAR_TOP_K = 500  # movies kept per monthly bucket
 BATCH_SIZE = 1_000  # users per Parquet chunk
 RANDOM_SEED = 42
+
+# Shared read-only state populated before Pool creation; inherited by fork workers
+# via copy-on-write — no pickling of the large lookup dicts required.
+_G: dict[str, Any] = {}
 
 
 # ── Pre-computation ────────────────────────────────────────────────────────────
@@ -143,6 +149,33 @@ def _collab_pool(
     for nid in neighbors:
         pool |= all_user_rated.get(nid, set())
     return list(pool - user_rated)
+
+
+# ── Parallel worker ───────────────────────────────────────────────────────────
+
+
+def _process_user_task(args: tuple[int, list[tuple[int, int, float]]]) -> list[dict[str, Any]]:
+    """Generate events for one user.  Runs inside a Pool worker.
+
+    Uses _G (populated before Pool creation) which fork workers inherit via
+    copy-on-write — no serialisation cost for the large lookup structures.
+    Each worker gets a deterministic per-user RNG so results are reproducible
+    regardless of execution order or number of processes.
+    """
+    uid, buf = args
+    rng = random.Random(RANDOM_SEED ^ uid)
+    sessions = _build_sessions(buf)
+    return _generate_user_events(
+        uid,
+        sessions,
+        _G["user_rated"][uid],
+        _G["popular_by_month"],
+        _G["genre_map"],
+        _G["genre_to_movies"],
+        _G["movie_to_users"],
+        _G["user_rated"],
+        rng,
+    )
 
 
 # ── Session construction ───────────────────────────────────────────────────────
@@ -313,8 +346,17 @@ def generate_events(
         user_rated = {k: v for k, v in user_rated.items() if k in keep}
         print(f"Limited to {max_users} users ({ratings_df.height:,} ratings).")
 
-    # Sort once; extract numpy arrays (zero-copy from Arrow) to avoid
-    # building a Python dict of 20M tuples (would cost ~3 GB).
+    # Populate shared globals before forking so workers inherit them via COW.
+    _G.update(
+        genre_map=genre_map,
+        genre_to_movies=genre_to_movies,
+        popular_by_month=popular_by_month,
+        movie_to_users=movie_to_users,
+        user_rated=user_rated,
+    )
+
+    # Build per-user rating lists from sorted arrays.
+    print("Building per-user rating buffers...")
     ratings_sorted = ratings_df.sort(["userId", "timestamp"])
     uid_arr = ratings_sorted["userId"].to_numpy()
     mid_arr = ratings_sorted["movieId"].to_numpy()
@@ -322,7 +364,14 @@ def generate_events(
     rat_arr = ratings_sorted["rating"].to_numpy()
     del ratings_sorted, ratings_df
 
-    rng = random.Random(RANDOM_SEED)
+    user_ratings: dict[int, list[tuple[int, int, float]]] = defaultdict(list)
+    for i in range(len(uid_arr)):
+        user_ratings[int(uid_arr[i])].append((int(mid_arr[i]), int(ts_arr[i]), float(rat_arr[i])))
+    del uid_arr, mid_arr, ts_arr, rat_arr
+
+    tasks = list(user_ratings.items())
+    del user_ratings
+
     chunk_paths: list[Path] = []
     batch_rows: list[dict[str, Any]] = []
 
@@ -332,41 +381,18 @@ def generate_events(
         chunk_paths.append(chunk)
         batch_rows.clear()
 
-    def _process_user(uid: int, buf: list[tuple[int, int, float]]) -> None:
-        sessions = _build_sessions(buf)
-        batch_rows.extend(
-            _generate_user_events(
-                uid,
-                sessions,
-                user_rated[uid],
-                popular_by_month,
-                genre_map,
-                genre_to_movies,
-                movie_to_users,
-                user_rated,
-                rng,
-            )
-        )
-        if len(batch_rows) >= ROW_CHUNK_SIZE:
-            _flush_chunk()
+    n_workers = os.cpu_count() or 4
+    print(f"Processing {len(tasks):,} users across {n_workers} workers...")
 
-    prev_uid = -1
-    user_buf: list[tuple[int, int, float]] = []
-    n_users = len(user_rated)
-
-    with tqdm(total=n_users, desc="Generating events", unit="user") as pbar:
-        for i in range(len(uid_arr)):
-            uid = int(uid_arr[i])
-            if uid != prev_uid:
-                if prev_uid != -1:
-                    _process_user(prev_uid, user_buf)
-                    pbar.update(1)
-                prev_uid = uid
-                user_buf = []
-            user_buf.append((int(mid_arr[i]), int(ts_arr[i]), float(rat_arr[i])))
-        if user_buf:
-            _process_user(prev_uid, user_buf)
+    with (
+        Pool(processes=n_workers) as pool,
+        tqdm(total=len(tasks), desc="Generating events", unit="user") as pbar,
+    ):
+        for events in pool.imap_unordered(_process_user_task, tasks, chunksize=50):
+            batch_rows.extend(events)
             pbar.update(1)
+            if len(batch_rows) >= ROW_CHUNK_SIZE:
+                _flush_chunk()
 
     if batch_rows:
         _flush_chunk()
