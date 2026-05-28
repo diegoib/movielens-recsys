@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-05-28)
+
+### Features
+
+- Offline simulator ([#4](https://github.com/diegoib/movielens-recsys/pull/4),
+  [`7682865`](https://github.com/diegoib/movielens-recsys/commit/768286570800b49054b7b8b88ef66a87a87007a4))
+
+
 ## v0.2.0 (2026-05-24)
 
 ### Features
