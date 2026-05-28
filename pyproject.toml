@@ -12,7 +12,6 @@ data = [
     "polars==1.37.1",
     "pyarrow==22.0.0",
     "tqdm==4.67.1",
-    "kaggle>=1.6",
 ]
 onnx = [
     "onnx==1.20.1",
@@ -54,6 +53,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 [tool.mypy]
 ignore_missing_imports = true

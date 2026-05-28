@@ -67,7 +67,7 @@ Objetivo: ≤ 30 €/mes.
 movielens-recsys/
 ├── src/
 │   ├── data/
-│   │   ├── download.py           # descarga Kaggle
+│   │   ├── download.py           # descarga desde grouplens.org
 │   │   ├── generate_events.py    # Simulador 1
 │   │   └── upload_gcs.py
 │   ├── features/
@@ -190,7 +190,7 @@ make tf-init ENV=dev
 - [ ] Servicio `recsys-serving`: placeholder, se actualizará en Fase 6
 
 **`modules/secrets/`**
-- [ ] Secret `kaggle-username` y `kaggle-key`: vacíos, se rellenan manualmente después de apply
+- [ ] Placeholder listo para secretos de fases posteriores (sin contenido en Fase 1)
 
 **Configuración**
 - [ ] `infra/main.tf`: bloque terraform + provider google + llamadas a módulos; estado local en `infra/terraform.tfstate` (gitignoreado)
@@ -213,8 +213,8 @@ make tf-apply GCP_PROJECT_ID=<id>
 ### Subtareas
 
 **Descarga**
-- [ ] `src/data/download.py`: usa la librería `kaggle` para descargar `grouplens/movielens-20m-dataset`
-  - Lee `KAGGLE_USERNAME` y `KAGGLE_KEY` de variables de entorno (o de GCP Secrets Manager con `google-cloud-secret-manager`)
+- [ ] `src/data/download.py`: descarga el zip desde `https://files.grouplens.org/datasets/movielens/ml-latest.zip` con `urllib.request` (stdlib, sin dependencias extra)
+  - Extrae en `data/raw/`; si el zip ya existe, omite la descarga (idempotente)
   - Output: `data/raw/ratings.csv`, `movies.csv`, `genome-scores.csv`, `genome-tags.csv`, `tags.csv`, `links.csv`
 
 **Validación con Pydantic**
@@ -623,7 +623,7 @@ make serve-deploy
 | `make lint` | `ruff check` + `mypy` |
 | `make fmt` | `ruff format` |
 | `make test` | `pytest` |
-| `make data-download` | Descarga MovieLens 20M desde Kaggle |
+| `make data-download` | Descarga MovieLens desde grouplens.org |
 | `make data-generate` | Ejecuta Simulador 1 (genera eventos históricos) |
 | `make data-upload` | Sube raw + processed a GCS |
 | `make features` | Feature engineering offline |

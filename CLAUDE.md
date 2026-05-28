@@ -37,10 +37,9 @@ Branch naming: `feature/<name>`, `fix/<name>`. All branches except `main` releas
 
 ## Data & Artifacts
 
-- Raw data: `data/raw/` (MovieLens CSVs, downloaded via Kaggle)
+- Raw data: `data/raw/` (MovieLens CSVs, downloaded from grouplens.org)
 - Processed: `data/processed/` (events table ~150-170M rows in Parquet)
 - Models: `artifacts/models/`
-- Required env vars for download: `KAGGLE_USERNAME`, `KAGGLE_KEY`
 
 ## Implementation Phases
 

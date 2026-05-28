@@ -1,5 +1,6 @@
 GCP_PROJECT_ID ?= movielens-recsys-proj
 GCP_REGION ?= us-central1
+GCP_ZONE ?= us-central1-a
 
 .PHONY: help setup lint fmt test \
         tf-init tf-plan tf-apply \
@@ -10,7 +11,9 @@ GCP_REGION ?= us-central1
         streaming-local streaming-deploy streaming-status \
         simulate simulate-gcp \
         airflow-deploy retrain-manual \
-        monitoring-local
+        monitoring-local \
+        datagen-vm-start datagen-vm-stop \
+        datagen-run datagen-attach datagen-status
 
 help: ## List all available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -135,3 +138,25 @@ retrain-manual: ## Manually trigger the weekly_retrain DAG
 
 monitoring-local: ## Start Prometheus + Grafana locally
 	docker compose up prometheus grafana
+
+# ── Datagen VM ────────────────────────────────────────────────────────────────
+
+datagen-vm-start: ## Arrancar datagen-vm en GCP
+	gcloud compute instances start datagen-vm \
+		--zone $(GCP_ZONE) --project $(GCP_PROJECT_ID)
+
+datagen-vm-stop: ## Apagar datagen-vm en GCP (después de generar los datos)
+	gcloud compute instances stop datagen-vm \
+		--zone $(GCP_ZONE) --project $(GCP_PROJECT_ID)
+
+datagen-run: ## Lanzar pipeline completo en tmux (survives SSH disconnect; VM se apaga sola al terminar)
+	gcloud compute ssh datagen-vm --project $(GCP_PROJECT_ID) --zone $(GCP_ZONE) -- \
+		"tmux new-session -d -s datagen 'cd ~/movielens-recsys && uv sync --group data && make data-download && make data-generate && GCP_PROJECT_ID=$(GCP_PROJECT_ID) make data-upload && sudo shutdown -h now'"
+
+datagen-attach: ## Reengancharse al tmux session para ver el progreso en vivo (desengancharse: Ctrl+B D)
+	gcloud compute ssh datagen-vm --project $(GCP_PROJECT_ID) --zone $(GCP_ZONE) \
+		--ssh-flag="-t" -- "tmux attach -t datagen"
+
+datagen-status: ## Comprobar si el pipeline sigue corriendo en datagen-vm
+	gcloud compute ssh datagen-vm --project $(GCP_PROJECT_ID) --zone $(GCP_ZONE) -- \
+		"tmux ls 2>/dev/null && echo 'Pipeline en progreso' || echo 'Sin sesión activa (terminado o no iniciado)'"

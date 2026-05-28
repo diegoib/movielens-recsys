@@ -1,17 +1,16 @@
 ---
 name: data-pipeline
-description: Download MovieLens 20M from Kaggle and generate the synthetic events table. Run once before training.
+description: Download MovieLens dataset from grouplens.org and generate the synthetic events table. Run once before training.
 disable-model-invocation: true
 ---
 
 Run the full offline data pipeline for movielens-recsys.
 
 Prerequisites:
-- `uv sync --group data` (includes polars, pandas, pyarrow, kaggle, pydantic, tqdm)
-- Env vars set: `KAGGLE_USERNAME` and `KAGGLE_KEY`
+- `uv sync --group data` (includes polars, pandas, pyarrow, pydantic, tqdm)
 
 Steps:
-1. Download MovieLens 20M from Kaggle:
+1. Download MovieLens dataset from grouplens.org:
    `uv run python src/data/download.py $ARGUMENTS`
    Output: `data/raw/` (ratings.csv, movies.csv, genome-scores.csv, genome-tags.csv, tags.csv, links.csv)
 
