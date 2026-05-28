@@ -8,7 +8,8 @@
       "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('/workspace/.github/workflows/ci.yml'\\)\\); print\\('ci.yml YAML válido'\\)\")",
       "Bash(make help *)",
       "Bash(uv run *)",
-      "Bash(terraform validate *)"
+      "Bash(terraform validate *)",
+      "Bash(xargs ls -la)"
     ]
   },
   "outputStyle": "Learning"
