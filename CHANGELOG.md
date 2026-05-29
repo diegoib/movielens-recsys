@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-05-29)
+
+### Features
+
+- Offline feature engineering ([#5](https://github.com/diegoib/movielens-recsys/pull/5),
+  [`3b222cb`](https://github.com/diegoib/movielens-recsys/commit/3b222cb4f2df59a969cab827e17d8a887fcac6bf))
+
+
 ## v0.3.0 (2026-05-28)
 
 ### Features
