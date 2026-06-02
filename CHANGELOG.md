@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.5.0 (2026-06-02)
+
+### Features
+
+- Model training ([#6](https://github.com/diegoib/movielens-recsys/pull/6),
+  [`04e7ab6`](https://github.com/diegoib/movielens-recsys/commit/04e7ab67604c474a47d3859686fb5869ab584101))
+
+
 ## v0.4.0 (2026-05-29)
 
 ### Features
