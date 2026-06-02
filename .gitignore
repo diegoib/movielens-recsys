@@ -231,3 +231,6 @@ mlruns/
 .terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
+
+# Personal
+try_tests.ipynb

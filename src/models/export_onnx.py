@@ -1,0 +1,76 @@
+"""Export TwoTowerModel to ONNX and verify numerical equivalence with PyTorch."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import onnx
+import onnxruntime as ort
+import torch
+
+from src.data.dataset import RecSysDataModule
+from src.models.lightning_module import TwoTowerLightningModule
+
+
+def export_onnx(
+    lit_module: TwoTowerLightningModule,
+    output_path: Path,
+    data_module: RecSysDataModule,
+    batch_size: int = 4,
+) -> None:
+    """Export lit_module.model to ONNX and verify outputs match PyTorch (tol=1e-3).
+
+    Args:
+        lit_module: trained Lightning module (model must be on CPU for export).
+        output_path: destination .onnx file path.
+        data_module: used to read vocab sizes for dummy batch construction.
+        batch_size: size of the dummy batch used for tracing and verification.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    model = lit_module.model.cpu().eval()
+
+    # Build dummy inputs within the known vocab range
+    dummy_user_ids = torch.randint(1, max(data_module.n_users, 2), (batch_size,))
+    dummy_behavior = torch.randn(batch_size, data_module.user_behavior_dim)
+    dummy_movie_ids = torch.randint(1, max(data_module.n_movies, 2), (batch_size,))
+    dummy_meta = torch.randn(batch_size, data_module.movie_meta_dim)
+    dummy_inputs = (dummy_user_ids, dummy_behavior, dummy_movie_ids, dummy_meta)
+
+    torch.onnx.export(
+        model,
+        dummy_inputs,
+        str(output_path),
+        opset_version=17,
+        input_names=["user_ids", "user_behavior", "movie_ids", "movie_meta"],
+        output_names=["score"],
+        dynamic_axes={
+            "user_ids": {0: "batch"},
+            "user_behavior": {0: "batch"},
+            "movie_ids": {0: "batch"},
+            "movie_meta": {0: "batch"},
+            "score": {0: "batch"},
+        },
+    )
+
+    onnx.checker.check_model(str(output_path))
+
+    # Verify numerical equivalence
+    sess = ort.InferenceSession(str(output_path))
+    ort_inputs = {
+        "user_ids": dummy_user_ids.numpy(),
+        "user_behavior": dummy_behavior.numpy(),
+        "movie_ids": dummy_movie_ids.numpy(),
+        "movie_meta": dummy_meta.numpy(),
+    }
+    ort_out = sess.run(["score"], ort_inputs)[0]
+
+    with torch.no_grad():
+        pt_out = model(*dummy_inputs).numpy()
+
+    max_diff = float(np.abs(pt_out - ort_out).max())
+    if max_diff >= 1e-3:
+        raise RuntimeError(f"ONNX vs PyTorch max diff {max_diff:.2e} exceeds 1e-3")
+
+    print(f"ONNX export verified (max diff={max_diff:.2e}): {output_path}")
