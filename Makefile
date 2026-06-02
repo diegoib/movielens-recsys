@@ -66,10 +66,10 @@ features: ## Compute offline features from events
 # ── Model training ────────────────────────────────────────────────────────────
 
 train-local-debug: ## Smoke test: 10K rows, 2 epochs, no MLflow
-	uv run python src/train.py --max_rows 10000 --max_epochs 2 --fast_dev_run True
+	PYTHONPATH=. uv run python src/train.py --max_rows 10000 --max_epochs 2 --fast_dev_run
 
 train-local: ## Full local training run (requires processed data)
-	uv run python src/train.py
+	PYTHONPATH=. uv run python src/train.py
 
 train-gcp: ## Trigger Cloud Run Job for training
 	gcloud run jobs execute training-job --region $(GCP_REGION) --project $(GCP_PROJECT_ID)
