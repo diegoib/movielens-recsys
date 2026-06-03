@@ -84,8 +84,13 @@ docker-build: ## Build all Docker images
 	docker build -f docker/serving/Dockerfile   -t recsys-serving .
 	docker build -f docker/streaming/Dockerfile -t recsys-streaming .
 
-docker-build-training: ## Build training Docker image
-	docker build -f docker/training/Dockerfile -t recsys-training .
+docker-build-training: ## Build, push training image to Artifact Registry and update Cloud Run Job
+	docker build --platform linux/amd64 -f docker/training/Dockerfile \
+		-t $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/movielens-recsys/training:latest .
+	docker push $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/movielens-recsys/training:latest
+	gcloud run jobs update training-job \
+		--image $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/movielens-recsys/training:latest \
+		--region $(GCP_REGION) --project $(GCP_PROJECT_ID)
 
 # ── Serving ───────────────────────────────────────────────────────────────────
 

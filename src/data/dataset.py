@@ -49,8 +49,8 @@ class RecSysDataModule(L.LightningDataModule):
 
     def __init__(
         self,
-        data_path: Path,
-        movies_path: Path,
+        data_path: str | Path,
+        movies_path: str | Path,
         batch_size: int,
         max_rows: int | None = None,
         num_workers: int = 4,

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -15,49 +18,58 @@ from src.models.lightning_module import TwoTowerLightningModule
 
 def export_onnx(
     lit_module: TwoTowerLightningModule,
-    output_path: Path,
+    output_path: str | Path,
     data_module: RecSysDataModule,
     batch_size: int = 4,
 ) -> None:
     """Export lit_module.model to ONNX and verify outputs match PyTorch (tol=1e-3).
 
-    Args:
-        lit_module: trained Lightning module (model must be on CPU for export).
-        output_path: destination .onnx file path.
-        data_module: used to read vocab sizes for dummy batch construction.
-        batch_size: size of the dummy batch used for tracing and verification.
+    Supports both local paths and GCS URIs (gs://bucket/path/model.onnx).
     """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
     model = lit_module.model.cpu().eval()
 
-    # Build dummy inputs within the known vocab range
     dummy_user_ids = torch.randint(1, max(data_module.n_users, 2), (batch_size,))
     dummy_behavior = torch.randn(batch_size, data_module.user_behavior_dim)
     dummy_movie_ids = torch.randint(1, max(data_module.n_movies, 2), (batch_size,))
     dummy_meta = torch.randn(batch_size, data_module.movie_meta_dim)
     dummy_inputs = (dummy_user_ids, dummy_behavior, dummy_movie_ids, dummy_meta)
 
-    torch.onnx.export(
-        model,
-        dummy_inputs,
-        str(output_path),
-        opset_version=17,
-        input_names=["user_ids", "user_behavior", "movie_ids", "movie_meta"],
-        output_names=["score"],
-        dynamic_axes={
-            "user_ids": {0: "batch"},
-            "user_behavior": {0: "batch"},
-            "movie_ids": {0: "batch"},
-            "movie_meta": {0: "batch"},
-            "score": {0: "batch"},
-        },
-    )
+    # Export to a local temp file (avoids type issues with BytesIO in torch 2.7+)
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".onnx")
+    os.close(tmp_fd)
+    try:
+        torch.onnx.export(
+            model,
+            dummy_inputs,
+            tmp_path,
+            opset_version=17,
+            input_names=["user_ids", "user_behavior", "movie_ids", "movie_meta"],
+            output_names=["score"],
+            dynamic_axes={
+                "user_ids": {0: "batch"},
+                "user_behavior": {0: "batch"},
+                "movie_ids": {0: "batch"},
+                "movie_meta": {0: "batch"},
+                "score": {0: "batch"},
+            },
+        )
+        model_bytes = Path(tmp_path).read_bytes()
+    finally:
+        os.unlink(tmp_path)
 
-    onnx.checker.check_model(str(output_path))
+    onnx.checker.check_model(onnx.load(io.BytesIO(model_bytes)))
 
-    # Verify numerical equivalence
-    sess = ort.InferenceSession(str(output_path))
+    output_str = str(output_path)
+    if output_str.startswith("gs://"):
+        import fsspec
+
+        with fsspec.open(output_str, "wb") as f:
+            f.write(model_bytes)  # type: ignore[union-attr]
+    else:
+        Path(output_str).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_str).write_bytes(model_bytes)
+
+    sess = ort.InferenceSession(model_bytes)
     ort_inputs = {
         "user_ids": dummy_user_ids.numpy(),
         "user_behavior": dummy_behavior.numpy(),

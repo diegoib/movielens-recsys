@@ -35,7 +35,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install test deps
-        run: uv sync --group test --group data
+        run: uv sync --group all
 
       - name: pytest
         run: uv run pytest --tb=short

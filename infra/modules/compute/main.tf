@@ -36,7 +36,9 @@ resource "google_compute_instance" "streaming_vm" {
 
   network_interface {
     network = "default"
-    access_config {} # ephemeral external IP
+    access_config {
+      nat_ip = google_compute_address.streaming_vm_static_ip.address
+    }
   }
 
   service_account {
@@ -99,7 +101,7 @@ resource "google_compute_instance" "datagen_vm" {
   name           = "datagen-vm"
   project        = var.project_id
   zone           = var.zone
-  machine_type   = "n2-standard-8"
+  machine_type   = "e2-standard-8"
   desired_status = "TERMINATED"
 
   boot_disk {
@@ -131,7 +133,31 @@ resource "google_compute_instance" "datagen_vm" {
   tags = ["datagen-vm"]
 }
 
+# ── Static IP for streaming VM ────────────────────────────────────────────────
+
+resource "google_compute_address" "streaming_vm_static_ip" {
+  name    = "streaming-vm-static-ip"
+  project = var.project_id
+  region  = var.region
+}
+
 # ── Firewall rules ─────────────────────────────────────────────────────────────
+
+# Allow MLflow UI + tracking API from anywhere (Cloud Run Jobs need this; port forward for local UI)
+resource "google_compute_firewall" "allow_mlflow" {
+  name    = "allow-mlflow-5000"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["5000"]
+  }
+
+  source_ranges = ["0.0.0.0/0"] # educational project; restrict to VPC in production
+  target_tags   = ["streaming-vm"]
+}
+
 
 # Allow Cloud Run to reach Redis on the streaming VM via internal GCP network
 resource "google_compute_firewall" "allow_redis_internal" {
@@ -164,6 +190,10 @@ resource "google_compute_firewall" "allow_redpanda_internal" {
 }
 
 # ── Outputs ────────────────────────────────────────────────────────────────────
+
+output "streaming_vm_static_ip" {
+  value = google_compute_address.streaming_vm_static_ip.address
+}
 
 output "streaming_vm_external_ip" {
   value = google_compute_instance.streaming_vm.network_interface[0].access_config[0].nat_ip
