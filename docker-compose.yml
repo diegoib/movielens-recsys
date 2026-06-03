@@ -1,0 +1,24 @@
+services:
+  mlflow-server:
+    build:
+      context: .
+      dockerfile: docker/mlflow/Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-db:/mlflow
+    environment:
+      MLFLOW_BACKEND_STORE_URI: sqlite:////mlflow/mlflow.db
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: gs://${GCP_PROJECT_ID}-data/mlflow-artifacts
+    command: >
+      mlflow server
+        --backend-store-uri sqlite:////mlflow/mlflow.db
+        --default-artifact-root gs://${GCP_PROJECT_ID}-data/mlflow-artifacts
+        --host 0.0.0.0
+        --port 5000
+        --allowed-hosts "*"
+        --cors-allowed-origins "*"
+    restart: unless-stopped
+
+volumes:
+  mlflow-db:
