@@ -1,5 +1,5 @@
-FROM python:3.12-slim
+FROM ghcr.io/mlflow/mlflow:v3.11.1
 
-RUN pip install --no-cache-dir mlflow==3.8.1 google-cloud-storage
+RUN pip install --no-cache-dir google-cloud-storage
 
 EXPOSE 5000
