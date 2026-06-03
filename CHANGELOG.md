@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.6.0 (2026-06-03)
+
+### Features
+
+- Training job ([#7](https://github.com/diegoib/movielens-recsys/pull/7),
+  [`2b6730f`](https://github.com/diegoib/movielens-recsys/commit/2b6730f770119888c47e78831e4852e4b2745cbc))
+
+
 ## v0.5.0 (2026-06-02)
 
 ### Features
