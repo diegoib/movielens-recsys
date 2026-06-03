@@ -1,6 +1,6 @@
 services:
   mlflow-server:
-    image: ghcr.io/mlflow/mlflow:2.20.2
+    image: ghcr.io/mlflow/mlflow:3.8.1
     ports:
       - "5000:5000"
     volumes:
