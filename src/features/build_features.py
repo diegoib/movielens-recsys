@@ -430,6 +430,11 @@ def build_features(
         )
     )
 
+    # Keep only impressions: training unit is P(click | impression),
+    # which matches the decision point at serving time.
+    # Features were computed from the full events_df (including clicks) above.
+    dataset = dataset.filter(pl.col("event_type") == "impression")
+
     dataset.write_parquet(output_path)
     counts = dataset["split"].value_counts().sort("split")
     print(f"Wrote {dataset.height:,} rows to {output_path}")
