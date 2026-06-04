@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.6.1 (2026-06-04)
+
+### Bug Fixes
+
+- Filter training dataset ([#8](https://github.com/diegoib/movielens-recsys/pull/8),
+  [`7f833e3`](https://github.com/diegoib/movielens-recsys/commit/7f833e3722e1471315a5688362a83d2aec4e17e2))
+
+
 ## v0.6.0 (2026-06-03)
 
 ### Features
