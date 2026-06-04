@@ -110,7 +110,7 @@ def _write_fake_parquet(path: Path) -> None:
             "timestamp": list(range(1_000_000, 1_000_000 + n)),
             "user_id": [i % 5 + 1 for i in range(n)],
             "movie_id": [i % 3 + 1 for i in range(n)],
-            "event_type": ["click" if i % 2 == 0 else "impression" for i in range(n)],
+            "event_type": ["impression"] * n,
             "rating": [None] * n,
             "session_id": [f"s{i % 5}" for i in range(n)],
             "label": [i % 2 for i in range(n)],
