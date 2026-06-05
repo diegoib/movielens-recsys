@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 
 import numpy as np
 import onnxruntime as ort
@@ -13,9 +14,20 @@ from src.serving.candidates import MovieRecord, build_movie_meta, set_genre_inde
 
 
 class OnnxScorer:
-    """Loads model artifacts from model_dir (local path or gs://) and scores (user, movie) pairs."""
+    """Loads model artifacts from model_dir (local path or gs://) and scores (user, movie) pairs.
 
-    def __init__(self, model_dir: str) -> None:
+    If MLFLOW_TRACKING_URI is set at instantiation time, resolves model_dir from the
+    Production stage in MLflow instead of using MODEL_DIR.
+    """
+
+    def __init__(self, model_dir: str = "") -> None:
+        mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI")
+        if not model_dir:
+            model_dir = os.environ.get("MODEL_DIR", "artifacts/models")
+        if mlflow_uri:
+            model_dir = self._resolve_from_mlflow(
+                mlflow_uri, os.environ.get("MLFLOW_MODEL_NAME", "two-tower-recsys")
+            )
         self.model_dir = model_dir.rstrip("/")
 
         vocab = self._load_json("vocab.json")
@@ -112,6 +124,24 @@ class OnnxScorer:
 
     def user_idx(self, user_id: int) -> int:
         return self.user_vocab.get(str(user_id), 0)
+
+    # ── MLflow resolution ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_from_mlflow(tracking_uri: str, model_name: str) -> str:
+        """Return the GCS artifact path for the Production model version.
+
+        The returned path points to the model/ subfolder of the MLflow run, which
+        contains model.onnx, vocab.json, and movie_features.parquet.
+        """
+        import mlflow
+
+        client = mlflow.MlflowClient(tracking_uri)
+        versions = client.get_latest_versions(model_name, stages=["Production"])
+        if not versions:
+            raise RuntimeError(f"No Production model in MLflow for '{model_name}'")
+        artifact_uri = client.get_run(versions[0].run_id).info.artifact_uri
+        return f"{artifact_uri}/model"
 
     # ── loading helpers ───────────────────────────────────────────────────────
 

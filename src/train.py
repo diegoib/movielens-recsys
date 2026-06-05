@@ -110,18 +110,19 @@ def main(cfg: TrainConfig) -> None:
     trainer.fit(lit, dm)
 
     if cfg.export_onnx_after_train and not cfg.fast_dev_run:
-        export_onnx(lit, cfg.onnx_output, dm)
-        _register_mlflow_model(trainer, cfg.onnx_output)
         output_dir = str(cfg.onnx_output).rsplit("/", 1)[0]
+        export_onnx(lit, cfg.onnx_output, dm)
         _export_serving_artifacts(dm, cfg.data_path, cfg.movies_path, output_dir)
+        _register_mlflow_model(trainer, cfg.onnx_output, output_dir)
 
 
-def _register_mlflow_model(trainer: L.Trainer, onnx_output: str) -> None:
-    """Register ONNX model in MLflow Model Registry (only when MLFLOW_TRACKING_URI is set)."""
+def _register_mlflow_model(trainer: L.Trainer, onnx_output: str, output_dir: str) -> None:
+    """Register ONNX + serving artifacts in MLflow (only when MLFLOW_TRACKING_URI is set)."""
     if not os.environ.get("MLFLOW_TRACKING_URI"):
         return
 
     import io
+    import tempfile
 
     import fsspec
     import mlflow
@@ -142,6 +143,22 @@ def _register_mlflow_model(trainer: L.Trainer, onnx_output: str) -> None:
             artifact_path="model",
             registered_model_name="two-tower-recsys",
         )
+        # Log vocab and movie features alongside the model so they're versioned together
+        for filename in ["vocab.json", "movie_features.parquet"]:
+            src = f"{output_dir}/{filename}"
+            if src.startswith("gs://"):
+                with fsspec.open(src, "rb") as f:
+                    data = f.read()  # type: ignore[union-attr]
+                tmp_fd, tmp_path = tempfile.mkstemp(suffix=f"_{filename}")
+                os.close(tmp_fd)
+                try:
+                    with open(tmp_path, "wb") as tmp:
+                        tmp.write(data)
+                    mlflow.log_artifact(tmp_path, artifact_path="model")
+                finally:
+                    os.unlink(tmp_path)
+            else:
+                mlflow.log_artifact(src, artifact_path="model")
     print(f"Model registered in MLflow: two-tower-recsys (run_id={run_id})")
 
 

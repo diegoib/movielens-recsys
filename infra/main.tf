@@ -82,6 +82,7 @@ module "cloud_run" {
   serving_sa = module.iam.serving_sa_email
   redis_host = module.compute.streaming_vm_internal_ip
   model_dir  = "gs://${module.gcs.bucket_name}/models"
+  mlflow_uri = "http://${module.compute.streaming_vm_static_ip}:5000"
 }
 
 module "cloud_run_jobs" {

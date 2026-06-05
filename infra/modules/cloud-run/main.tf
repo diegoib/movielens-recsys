@@ -10,7 +10,11 @@ variable "redis_host" {
 }
 variable "model_dir" {
   type        = string
-  description = "GCS path to model artifacts, e.g. gs://bucket/models"
+  description = "GCS path to model artifacts (fallback when MLflow has no Production model)"
+}
+variable "mlflow_uri" {
+  type        = string
+  description = "MLflow tracking server URL, e.g. http://<streaming-vm-ip>:5000"
 }
 
 resource "google_cloud_run_v2_service" "recsys_serving" {
@@ -52,6 +56,14 @@ resource "google_cloud_run_v2_service" "recsys_serving" {
       env {
         name  = "MODEL_DIR"
         value = var.model_dir
+      }
+      env {
+        name  = "MLFLOW_TRACKING_URI"
+        value = var.mlflow_uri
+      }
+      env {
+        name  = "MLFLOW_MODEL_NAME"
+        value = "two-tower-recsys"
       }
     }
   }
