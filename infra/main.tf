@@ -80,6 +80,8 @@ module "cloud_run" {
   project_id = var.project_id
   region     = var.region
   serving_sa = module.iam.serving_sa_email
+  redis_host = module.compute.streaming_vm_internal_ip
+  model_dir  = "gs://${module.gcs.bucket_name}/models"
 }
 
 module "cloud_run_jobs" {

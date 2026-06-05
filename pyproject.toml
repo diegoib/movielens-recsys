@@ -28,6 +28,14 @@ train = [
     "mlflow==3.8.1",
     "scikit-learn==1.8.0",
 ]
+serving = [
+    "fastapi[standard]>=0.115.0",
+    "redis>=5.0.0",
+    "onnxruntime==1.23.2",
+    "prometheus-fastapi-instrumentator>=7.0.0",
+    "gcsfs>=2024.9.0",
+    "polars==1.37.1",
+]
 dev = [
     "pre-commit==4.2.0",
     "ipykernel==7.1.0",
@@ -38,6 +46,7 @@ dev = [
 test = [
     "mypy==1.19.1",
     "pytest==9.0.2",
+    "types-redis>=4.6.0",
 ]
 all = [
     { include-group = "data" },

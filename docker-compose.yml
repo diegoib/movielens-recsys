@@ -20,5 +20,26 @@ services:
         --cors-allowed-origins "*"
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  recsys-serving:
+    build:
+      context: .
+      dockerfile: docker/serving/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    environment:
+      REDIS_HOST: redis
+      MODEL_DIR: artifacts/models
+    volumes:
+      - ./artifacts:/app/artifacts
+    restart: unless-stopped
+
 volumes:
   mlflow-db:
