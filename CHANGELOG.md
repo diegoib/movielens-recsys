@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.7.0 (2026-06-06)
+
+### Features
+
+- Serving ([#9](https://github.com/diegoib/movielens-recsys/pull/9),
+  [`1db3519`](https://github.com/diegoib/movielens-recsys/commit/1db35190ffda3442fdfdae719f9d4054e80a0d6b))
+
+
 ## v0.6.1 (2026-06-04)
 
 ### Bug Fixes
