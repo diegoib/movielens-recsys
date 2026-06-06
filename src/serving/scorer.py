@@ -25,9 +25,14 @@ class OnnxScorer:
         if not model_dir:
             model_dir = os.environ.get("MODEL_DIR", "artifacts/models")
         if mlflow_uri:
-            model_dir = self._resolve_from_mlflow(
-                mlflow_uri, os.environ.get("MLFLOW_MODEL_NAME", "two-tower-recsys")
-            )
+            try:
+                model_dir = self._resolve_from_mlflow(
+                    mlflow_uri, os.environ.get("MLFLOW_MODEL_NAME", "two-tower-recsys")
+                )
+            except Exception as exc:
+                # MLflow unreachable or no Production model: fall back to MODEL_DIR.
+                # Container still starts — /recommendations returns 503 until model loads.
+                print(f"WARNING: MLflow resolution failed ({exc}). Using MODEL_DIR fallback.")
         self.model_dir = model_dir.rstrip("/")
 
         vocab = self._load_json("vocab.json")
@@ -133,15 +138,25 @@ class OnnxScorer:
 
         The returned path points to the model/ subfolder of the MLflow run, which
         contains model.onnx, vocab.json, and movie_features.parquet.
+        Uses a 10-second socket timeout so Cloud Run startup isn't blocked by an
+        unreachable MLflow server.
         """
+        import socket
+
         import mlflow
 
-        client = mlflow.MlflowClient(tracking_uri)
-        versions = client.get_latest_versions(model_name, stages=["Production"])
-        if not versions:
-            raise RuntimeError(f"No Production model in MLflow for '{model_name}'")
-        artifact_uri = client.get_run(versions[0].run_id).info.artifact_uri
-        return f"{artifact_uri}/model"
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(10)
+        try:
+            client = mlflow.MlflowClient(tracking_uri)
+            versions = client.get_latest_versions(model_name, stages=["Production"])
+            if not versions:
+                raise RuntimeError(f"No Production model in MLflow for '{model_name}'")
+            run_id: str = versions[0].run_id or ""
+            artifact_uri = client.get_run(run_id).info.artifact_uri
+            return f"{artifact_uri}/model"
+        finally:
+            socket.setdefaulttimeout(old_timeout)
 
     # ── loading helpers ───────────────────────────────────────────────────────
 
