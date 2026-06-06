@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm
+FROM python:3.10-slim-bookworm
 
 # Java 17 JRE — PyFlink uses a JVM bridge; no full JDK needed
 RUN apt-get update -q && \
