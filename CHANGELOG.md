@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.8.0 (2026-06-06)
+
+### Features
+
+- Streaming stack ([#10](https://github.com/diegoib/movielens-recsys/pull/10),
+  [`70d5d86`](https://github.com/diegoib/movielens-recsys/commit/70d5d86668b6eacbdd12ffea1fed5536ec34ed7e))
+
+
 ## v0.7.0 (2026-06-06)
 
 ### Features
