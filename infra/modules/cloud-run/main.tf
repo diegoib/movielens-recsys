@@ -4,6 +4,18 @@ variable "serving_sa"  {
   type        = string
   description = "Service account email for the serving Cloud Run service"
 }
+variable "redis_host" {
+  type        = string
+  description = "Internal IP of streaming VM (Redis host)"
+}
+variable "model_dir" {
+  type        = string
+  description = "GCS path to model artifacts (fallback when MLflow has no Production model)"
+}
+variable "mlflow_uri" {
+  type        = string
+  description = "MLflow tracking server URL, e.g. http://<streaming-vm-ip>:5000"
+}
 
 resource "google_cloud_run_v2_service" "recsys_serving" {
   name     = "recsys-serving"
@@ -21,13 +33,37 @@ resource "google_cloud_run_v2_service" "recsys_serving" {
       max_instance_count = 3
     }
 
+    # VPC Direct Egress so Cloud Run can reach Redis on the streaming VM internal IP
+    vpc_access {
+      network_interfaces {
+        network = "default"
+      }
+      egress = "PRIVATE_RANGES_ONLY"
+    }
+
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello" # replaced in Phase 6 via make serve-deploy
+      image = "us-docker.pkg.dev/cloudrun/container/hello" # replaced via make serve-deploy
       resources {
         limits = {
           cpu    = "1"
-          memory = "512Mi"
+          memory = "1Gi"
         }
+      }
+      env {
+        name  = "REDIS_HOST"
+        value = var.redis_host
+      }
+      env {
+        name  = "MODEL_DIR"
+        value = var.model_dir
+      }
+      env {
+        name  = "MLFLOW_TRACKING_URI"
+        value = var.mlflow_uri
+      }
+      env {
+        name  = "MLFLOW_MODEL_NAME"
+        value = "two-tower-recsys"
       }
     }
   }

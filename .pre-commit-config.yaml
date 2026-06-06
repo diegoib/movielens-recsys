@@ -25,6 +25,7 @@ repos:
           - pydantic-settings>=2.0
           - types-requests
           - types-python-dateutil
+          - types-redis>=4.6.0
         args: [--ignore-missing-imports, --no-warn-unused-ignores]
 
   - repo: https://github.com/compilerla/conventional-pre-commit

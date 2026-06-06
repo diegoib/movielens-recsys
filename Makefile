@@ -98,7 +98,7 @@ serve-local: ## Run FastAPI + Redis locally on localhost:8000
 	docker compose up recsys-serving redis
 
 serve-deploy: ## Build, push and deploy serving image to Cloud Run
-	docker build -f docker/serving/Dockerfile \
+	docker build --platform linux/amd64 -f docker/serving/Dockerfile \
 		-t $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/movielens-recsys/serving:latest .
 	docker push $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/movielens-recsys/serving:latest
 	gcloud run deploy recsys-serving \
@@ -112,7 +112,7 @@ streaming-local: ## Start full local stack via Docker Compose
 
 streaming-deploy: ## Deploy streaming stack to GCP preemptible VM
 	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- \
-		"cd /opt/movielens-recsys && git pull && docker compose up -d"
+		"cd ~/movielens-recsys && git pull && docker compose up -d"
 
 streaming-status: ## Check container status on streaming VM
 	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- "docker compose ps"

@@ -110,16 +110,19 @@ def main(cfg: TrainConfig) -> None:
     trainer.fit(lit, dm)
 
     if cfg.export_onnx_after_train and not cfg.fast_dev_run:
+        output_dir = str(cfg.onnx_output).rsplit("/", 1)[0]
         export_onnx(lit, cfg.onnx_output, dm)
-        _register_mlflow_model(trainer, cfg.onnx_output)
+        _export_serving_artifacts(dm, cfg.data_path, cfg.movies_path, output_dir)
+        _register_mlflow_model(trainer, cfg.onnx_output, output_dir)
 
 
-def _register_mlflow_model(trainer: L.Trainer, onnx_output: str) -> None:
-    """Register ONNX model in MLflow Model Registry (only when MLFLOW_TRACKING_URI is set)."""
+def _register_mlflow_model(trainer: L.Trainer, onnx_output: str, output_dir: str) -> None:
+    """Register ONNX + serving artifacts in MLflow (only when MLFLOW_TRACKING_URI is set)."""
     if not os.environ.get("MLFLOW_TRACKING_URI"):
         return
 
     import io
+    import tempfile
 
     import fsspec
     import mlflow
@@ -140,7 +143,100 @@ def _register_mlflow_model(trainer: L.Trainer, onnx_output: str) -> None:
             artifact_path="model",
             registered_model_name="two-tower-recsys",
         )
+        # Log vocab and movie features alongside the model so they're versioned together
+        for filename in ["vocab.json", "movie_features.parquet"]:
+            src = f"{output_dir}/{filename}"
+            if src.startswith("gs://"):
+                with fsspec.open(src, "rb") as f:
+                    data = f.read()  # type: ignore[union-attr]
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmp_path = os.path.join(tmpdir, filename)
+                    with open(tmp_path, "wb") as tmp:
+                        tmp.write(data)
+                    mlflow.log_artifact(tmp_path, artifact_path="model")
+            else:
+                mlflow.log_artifact(src, artifact_path="model")
     print(f"Model registered in MLflow: two-tower-recsys (run_id={run_id})")
+
+
+def _export_serving_artifacts(
+    dm: RecSysDataModule,
+    data_path: str,
+    movies_path: str,
+    output_dir: str,
+) -> None:
+    """Save vocab.json and movie_features.parquet alongside the ONNX model.
+
+    Both files are needed by the serving layer to reconstruct the exact feature
+    space and vocabulary indices that the model was trained with.
+    """
+    import json
+
+    import fsspec
+    import polars as pl
+
+    # ── vocab.json ────────────────────────────────────────────────────────────
+    vocab: dict = {
+        "user_vocab": {str(k): v for k, v in dm.user_vocab.items()},
+        "movie_vocab": {str(k): v for k, v in dm.movie_vocab.items()},
+        "genre_index": dm._genre_index,
+        "norm_stats": {k: list(v) for k, v in dm._norm_stats.items()},
+        "user_behavior_dim": dm.user_behavior_dim,
+        "movie_meta_dim": dm.movie_meta_dim,
+    }
+    vocab_path = f"{output_dir}/vocab.json"
+    vocab_bytes = json.dumps(vocab).encode()
+    if vocab_path.startswith("gs://"):
+        with fsspec.open(vocab_path, "wb") as f:
+            f.write(vocab_bytes)  # type: ignore[union-attr]
+    else:
+        import pathlib
+
+        pathlib.Path(vocab_path).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(vocab_path).write_bytes(vocab_bytes)
+    print(f"Saved vocab.json → {vocab_path}")
+
+    # ── movie_features.parquet ────────────────────────────────────────────────
+    # Read impressions parquet, deduplicate by movie_id to get one row per movie.
+    # Join with movies.csv to add title. Add vocab index for each movie.
+    imp_df = pl.read_parquet(data_path)
+    movie_feat_cols = [
+        "movie_id",
+        "genres_vector",
+        "genome_top20",
+        "year",
+        "popularity_last_30d",
+        "avg_rating",
+    ]
+    movie_feats = imp_df.select(movie_feat_cols).unique(subset=["movie_id"])
+
+    movies_df = pl.read_csv(movies_path).select(
+        pl.col("movieId").cast(pl.Int64).alias("movie_id"),
+        pl.col("title"),
+    )
+    movie_feats = movie_feats.join(movies_df, on="movie_id", how="left")
+
+    movie_vocab_series = pl.Series(
+        "movie_idx",
+        [dm.movie_vocab.get(mid, 0) for mid in movie_feats["movie_id"].to_list()],
+        dtype=pl.Int64,
+    )
+    movie_feats = movie_feats.with_columns(movie_vocab_series)
+
+    feat_path = f"{output_dir}/movie_features.parquet"
+    import io as _io
+
+    feat_buf = _io.BytesIO()
+    movie_feats.write_parquet(feat_buf)
+    feat_bytes = feat_buf.getvalue()
+    if feat_path.startswith("gs://"):
+        with fsspec.open(feat_path, "wb") as f:
+            f.write(feat_bytes)  # type: ignore[union-attr]
+    else:
+        import pathlib
+
+        pathlib.Path(feat_path).write_bytes(feat_bytes)
+    print(f"Saved movie_features.parquet ({len(movie_feats):,} movies) → {feat_path}")
 
 
 if __name__ == "__main__":
