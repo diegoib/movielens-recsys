@@ -1,6 +1,6 @@
-variable "project_id"      { type = string }
-variable "region"          { type = string }
-variable "zone"            { type = string }
+variable "project_id" { type = string }
+variable "region" { type = string }
+variable "zone" { type = string }
 variable "streaming_vm_sa" {
   type        = string
   description = "Service account email to attach to the streaming VM"
@@ -29,8 +29,8 @@ resource "google_compute_instance" "streaming_vm" {
 
   # Preemptible: can be reclaimed by GCP at any time; startup script recovers state
   scheduling {
-    preemptible        = true
-    automatic_restart  = false
+    preemptible         = true
+    automatic_restart   = false
     on_host_maintenance = "TERMINATE"
   }
 
@@ -49,8 +49,12 @@ resource "google_compute_instance" "streaming_vm" {
   metadata_startup_script = <<-EOT
     #!/bin/bash
     set -euo pipefail
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
     apt-get update -q
-    apt-get install -y ca-certificates curl git
+    apt-get install -y ca-certificates curl git openssh-server
+    systemctl enable ssh
+    systemctl start ssh
 
     # Install Docker CE from the official Docker repository
     install -m 0755 -d /etc/apt/keyrings
@@ -68,7 +72,7 @@ resource "google_compute_instance" "streaming_vm" {
     systemctl enable docker
     systemctl start docker
     usermod -aG docker ubuntu
-    mkdir -p /opt/movielens-recsys
+    echo "GCP_PROJECT_ID=${var.project_id}" > /root/movielens-recsys/.env
   EOT
 
   tags = ["streaming-vm"]

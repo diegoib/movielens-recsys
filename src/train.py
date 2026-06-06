@@ -149,14 +149,11 @@ def _register_mlflow_model(trainer: L.Trainer, onnx_output: str, output_dir: str
             if src.startswith("gs://"):
                 with fsspec.open(src, "rb") as f:
                     data = f.read()  # type: ignore[union-attr]
-                tmp_fd, tmp_path = tempfile.mkstemp(suffix=f"_{filename}")
-                os.close(tmp_fd)
-                try:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmp_path = os.path.join(tmpdir, filename)
                     with open(tmp_path, "wb") as tmp:
                         tmp.write(data)
                     mlflow.log_artifact(tmp_path, artifact_path="model")
-                finally:
-                    os.unlink(tmp_path)
             else:
                 mlflow.log_artifact(src, artifact_path="model")
     print(f"Model registered in MLflow: two-tower-recsys (run_id={run_id})")

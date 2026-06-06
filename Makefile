@@ -112,7 +112,7 @@ streaming-local: ## Start full local stack via Docker Compose
 
 streaming-deploy: ## Deploy streaming stack to GCP preemptible VM
 	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- \
-		"cd /opt/movielens-recsys && git pull && docker compose up -d"
+		"cd ~/movielens-recsys && git pull && docker compose up -d"
 
 streaming-status: ## Check container status on streaming VM
 	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- "docker compose ps"
