@@ -24,6 +24,12 @@ serving = [
     "prometheus-fastapi-instrumentator>=7.0.0",
     "gcsfs>=2024.9.0",
     "polars==1.37.1",
+    "kafka-python>=2.0.0",
+]
+streaming = [
+    # apache-flink is NOT listed here: it conflicts with pyarrow>=12 and is only
+    # used inside docker/streaming/Dockerfile (installed at image build time).
+    "redis>=5.0.0",
 ]
 dev = [
     "pre-commit==4.2.0",

@@ -16,6 +16,10 @@ variable "mlflow_uri" {
   type        = string
   description = "MLflow tracking server URL, e.g. http://<streaming-vm-ip>:5000"
 }
+variable "redpanda_brokers" {
+  type        = string
+  description = "Kafka broker address for RedPanda, e.g. <streaming-vm-internal-ip>:9092"
+}
 
 resource "google_cloud_run_v2_service" "recsys_serving" {
   name     = "recsys-serving"
@@ -64,6 +68,10 @@ resource "google_cloud_run_v2_service" "recsys_serving" {
       env {
         name  = "MLFLOW_MODEL_NAME"
         value = "two-tower-recsys"
+      }
+      env {
+        name  = "REDPANDA_BROKERS"
+        value = var.redpanda_brokers
       }
     }
   }

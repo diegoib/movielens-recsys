@@ -1174,6 +1174,15 @@ wheels = [
 ]
 
 [[package]]
+name = "kafka-python"
+version = "2.3.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/7e/9eb4363e5018b71edf77de3d2fbd687f1e3a55d43101138a5b7f2ca56d97/kafka_python-2.3.2.tar.gz", hash = "sha256:2d2469bcabc2551be7eaf7fb512e1241484d358800f2665b90e7e24fea84259d", size = 357589, upload-time = "2026-06-03T22:46:49.022Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/db/cfe23cfacc9aabeef59e349aa6c2738d195df1d56ccf8c31362abdd68ddb/kafka_python-2.3.2-py2.py3-none-any.whl", hash = "sha256:e8a5e6f2c4ce13a8041669337038d5125e0e09e6d6f0911902ae5939e5b9595e", size = 326623, upload-time = "2026-06-03T22:46:47.417Z" },
+]
+
+[[package]]
 name = "kiwisolver"
 version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1440,13 +1449,15 @@ wheels = [
 
 [[package]]
 name = "movielens-recsys"
-version = "0.6.1"
+version = "0.7.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
 all = [
+    { name = "fastapi", extra = ["standard"] },
     { name = "gcsfs" },
     { name = "ipykernel" },
+    { name = "kafka-python" },
     { name = "lightning" },
     { name = "mlflow" },
     { name = "mypy" },
@@ -1456,9 +1467,11 @@ all = [
     { name = "pandas" },
     { name = "polars" },
     { name = "pre-commit" },
+    { name = "prometheus-fastapi-instrumentator" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pytest" },
+    { name = "redis" },
     { name = "requests" },
     { name = "ruff" },
     { name = "scikit-learn" },
@@ -1491,9 +1504,13 @@ onnx = [
 serving = [
     { name = "fastapi", extra = ["standard"] },
     { name = "gcsfs" },
+    { name = "kafka-python" },
     { name = "onnxruntime" },
     { name = "polars" },
     { name = "prometheus-fastapi-instrumentator" },
+    { name = "redis" },
+]
+streaming = [
     { name = "redis" },
 ]
 test = [
@@ -1515,8 +1532,10 @@ train = [
 
 [package.metadata.requires-dev]
 all = [
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0" },
     { name = "gcsfs", specifier = ">=2024.9.0" },
     { name = "ipykernel", specifier = "==7.1.0" },
+    { name = "kafka-python", specifier = ">=2.0.0" },
     { name = "lightning", specifier = "==2.5.6" },
     { name = "mlflow", specifier = "==3.8.1" },
     { name = "mypy", specifier = "==1.19.1" },
@@ -1526,9 +1545,11 @@ all = [
     { name = "pandas", specifier = "==2.3.3" },
     { name = "polars", specifier = "==1.37.1" },
     { name = "pre-commit", specifier = "==4.2.0" },
+    { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0.0" },
     { name = "pyarrow", specifier = "==22.0.0" },
     { name = "pydantic", specifier = "==2.12.5" },
     { name = "pytest", specifier = "==9.0.2" },
+    { name = "redis", specifier = ">=5.0.0" },
     { name = "requests", specifier = "==2.32.3" },
     { name = "ruff", specifier = ">=0.9" },
     { name = "scikit-learn", specifier = "==1.8.0" },
@@ -1561,11 +1582,13 @@ onnx = [
 serving = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0" },
     { name = "gcsfs", specifier = ">=2024.9.0" },
+    { name = "kafka-python", specifier = ">=2.0.0" },
     { name = "onnxruntime", specifier = "==1.23.2" },
     { name = "polars", specifier = "==1.37.1" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
 ]
+streaming = [{ name = "redis", specifier = ">=5.0.0" }]
 test = [
     { name = "mypy", specifier = "==1.19.1" },
     { name = "pytest", specifier = "==9.0.2" },

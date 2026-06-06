@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -15,27 +17,44 @@ from src.data.schemas import Event
 from src.serving.candidates import generate_candidates
 from src.serving.scorer import OnnxScorer
 
+log = logging.getLogger(__name__)
+
 _MODEL_DIR = os.environ.get("MODEL_DIR", "artifacts/models")
 _REDIS_HOST = os.environ.get("REDIS_HOST")
 _REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+_REDPANDA_BROKERS = os.environ.get("REDPANDA_BROKERS")
 
 _scorer: OnnxScorer | None = None
 _redis: redis_lib.Redis | None = None  # type: ignore[type-arg]
+_producer = None  # kafka.KafkaProducer | None, imported lazily to avoid hard dep
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    global _scorer, _redis
+    global _scorer, _redis, _producer
     try:
         _scorer = OnnxScorer(_MODEL_DIR)
     except Exception as exc:
         # Start without model — /recommendations returns 503 until artifacts are uploaded
-        print(f"WARNING: model loading failed ({exc}). Run make train-gcp to generate artifacts.")
+        log.warning("Model loading failed (%s). Run make train-gcp to generate artifacts.", exc)
     if _REDIS_HOST:
         _redis = redis_lib.Redis(host=_REDIS_HOST, port=_REDIS_PORT, decode_responses=True)
+    if _REDPANDA_BROKERS:
+        try:
+            from kafka import KafkaProducer
+
+            _producer = KafkaProducer(
+                bootstrap_servers=_REDPANDA_BROKERS,
+                value_serializer=lambda v: json.dumps(v).encode(),
+            )
+            log.info("Kafka producer connected to %s", _REDPANDA_BROKERS)
+        except Exception as exc:
+            log.warning("Kafka producer init failed (%s). Events will not be streamed.", exc)
     yield
     if _redis:
         _redis.close()
+    if _producer:
+        _producer.close()
 
 
 app = FastAPI(title="recsys-serving", lifespan=lifespan)
@@ -105,5 +124,13 @@ def recommendations(user_id: int, n: int = 5) -> RecommendationResponse:
 
 @app.post("/events", status_code=200)
 def ingest_event(event: Event) -> dict:
-    # Phase 7 will wire this to RedPanda; for now just validate and acknowledge
+    if _producer is not None:
+        payload = event.model_dump()
+        payload["event_id"] = str(payload["event_id"])
+        payload["session_id"] = str(payload["session_id"])
+        # Enrich with genres_vector so the streaming processor can compute genre affinity
+        # without loading its own copy of movie_features.parquet.
+        if _scorer is not None and event.movie_id in _scorer.movie_cache:
+            payload["genres_vector"] = _scorer.movie_cache[event.movie_id].genres_vector
+        _producer.send("events", payload)
     return {"status": "accepted", "event_id": str(event.event_id)}

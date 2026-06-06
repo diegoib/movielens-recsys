@@ -82,7 +82,8 @@ module "cloud_run" {
   serving_sa = module.iam.serving_sa_email
   redis_host = module.compute.streaming_vm_internal_ip
   model_dir  = "gs://${module.gcs.bucket_name}/models"
-  mlflow_uri = "http://${module.compute.streaming_vm_static_ip}:5000"
+  mlflow_uri       = "http://${module.compute.streaming_vm_static_ip}:5000"
+  redpanda_brokers = "${module.compute.streaming_vm_internal_ip}:9092"
 }
 
 module "cloud_run_jobs" {

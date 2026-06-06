@@ -161,6 +161,21 @@ resource "google_compute_address" "streaming_vm_static_ip" {
 
 # ── Firewall rules ─────────────────────────────────────────────────────────────
 
+# Allow RedPanda Console (UI) from anywhere
+resource "google_compute_firewall" "allow_redpanda_console" {
+  name    = "allow-redpanda-console-8080"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8080"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["streaming-vm"]
+}
+
 # Allow MLflow UI + tracking API from anywhere (Cloud Run Jobs need this; port forward for local UI)
 resource "google_compute_firewall" "allow_mlflow" {
   name    = "allow-mlflow-5000"
