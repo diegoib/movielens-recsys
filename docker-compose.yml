@@ -33,7 +33,28 @@ services:
       - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
     ports:
       - "9092:9092"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info", "--brokers", "redpanda:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
+
+  redpanda-init:
+    image: redpandadata/redpanda:v25.3.9
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    command:
+      - rpk
+      - topic
+      - create
+      - events
+      - model-predictions
+      - --partitions=1
+      - --replicas=1
+      - --brokers=redpanda:9092
+    restart: "no"
 
   redpanda-console:
     image: redpandadata/console:v2.6.0
@@ -59,7 +80,7 @@ services:
       REDPANDA_BROKERS: redpanda:9092
       REDIS_HOST: redis
     depends_on:
-      - redpanda
+      - redpanda-init
       - redis
     restart: on-failure
 
