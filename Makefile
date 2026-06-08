@@ -119,13 +119,13 @@ streaming-status: ## Check container status on streaming VM
 
 # ── Simulator 2 ───────────────────────────────────────────────────────────────
 
-simulate: ## Run Simulator 2 locally (N=10 default users)
-	uv run python src/simulator/online_simulator.py --n_users $(or $(N),10)
+simulate: ## Run Simulator 2 continuously (Ctrl+C to stop, N=warm users default 10)
+	uv run python src/simulator/online_simulator.py --n_warm_users $(or $(N),10)
 
-simulate-gcp: ## Run Simulator 2 as Cloud Run Job (N=1000 default)
+simulate-gcp: ## Run Simulator 2 as Cloud Run Job (N=warm users default 1000)
 	gcloud run jobs execute simulator-job \
 		--region $(GCP_REGION) --project $(GCP_PROJECT_ID) \
-		--args="--n_users,$(or $(N),1000)"
+		--args="--n_warm_users,$(or $(N),1000)"
 
 # ── Airflow ───────────────────────────────────────────────────────────────────
 

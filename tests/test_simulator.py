@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from src.simulator.online_simulator import _build_event, _click_prob
+from src.simulator.online_simulator import _build_event, _click_prob, _sample_lifetime
 
 
 class TestClickProb:
@@ -64,3 +64,20 @@ class TestBuildEvent:
         ev = _build_event(1, 1, "impression", uuid.uuid4(), 0)
         assert ev["label"] == 0
         assert ev["event_type"] == "impression"
+
+
+class TestSampleLifetime:
+    def test_zero_churn_fraction_always_returns_none(self) -> None:
+        for _ in range(50):
+            assert _sample_lifetime(0.0, 7.0) is None
+
+    def test_full_churn_fraction_always_returns_float(self) -> None:
+        for _ in range(50):
+            result = _sample_lifetime(1.0, 7.0)
+            assert isinstance(result, float) and result > 0
+
+    def test_churn_fraction_half_splits_roughly_evenly(self) -> None:
+        results = [_sample_lifetime(0.5, 7.0) for _ in range(400)]
+        n_none = sum(1 for r in results if r is None)
+        # 50% ± 10% tolerance
+        assert 160 < n_none < 240
