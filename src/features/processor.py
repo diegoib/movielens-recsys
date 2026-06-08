@@ -78,8 +78,8 @@ def _compute_features(entries: list[dict], now_ts: int) -> dict:
 try:
     import redis as redis_lib
     from pyflink.common import Types
-    from pyflink.common.state import ListStateDescriptor
     from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+    from pyflink.datastream.state import ListStateDescriptor
 
     class UserFeatureProcessor(KeyedProcessFunction):  # type: ignore[misc]
         """Maintains a rolling list of click events per user in Flink ListState.
