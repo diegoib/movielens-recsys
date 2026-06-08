@@ -31,6 +31,10 @@ streaming = [
     # used inside docker/streaming/Dockerfile (installed at image build time).
     "redis>=5.0.0",
 ]
+simulator = [
+    "httpx>=0.27.0",
+    "kafka-python>=2.0.0",
+]
 dev = [
     "pre-commit==4.2.0",
     "ipykernel==7.1.0",
@@ -45,6 +49,7 @@ all = [
     { include-group = "torch" },
     { include-group = "train" },
     { include-group = "serving" },
+    { include-group = "simulator" },
     { include-group = "dev" },
     { include-group = "test" },
 ]

@@ -1449,13 +1449,14 @@ wheels = [
 
 [[package]]
 name = "movielens-recsys"
-version = "0.7.0"
+version = "0.8.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
 all = [
     { name = "fastapi", extra = ["standard"] },
     { name = "gcsfs" },
+    { name = "httpx" },
     { name = "ipykernel" },
     { name = "kafka-python" },
     { name = "lightning" },
@@ -1510,6 +1511,10 @@ serving = [
     { name = "prometheus-fastapi-instrumentator" },
     { name = "redis" },
 ]
+simulator = [
+    { name = "httpx" },
+    { name = "kafka-python" },
+]
 streaming = [
     { name = "redis" },
 ]
@@ -1534,6 +1539,7 @@ train = [
 all = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0" },
     { name = "gcsfs", specifier = ">=2024.9.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "ipykernel", specifier = "==7.1.0" },
     { name = "kafka-python", specifier = ">=2.0.0" },
     { name = "lightning", specifier = "==2.5.6" },
@@ -1587,6 +1593,10 @@ serving = [
     { name = "polars", specifier = "==1.37.1" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
+]
+simulator = [
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "kafka-python", specifier = ">=2.0.0" },
 ]
 streaming = [{ name = "redis", specifier = ">=5.0.0" }]
 test = [
