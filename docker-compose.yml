@@ -34,7 +34,7 @@ services:
     ports:
       - "9092:9092"
     healthcheck:
-      test: ["CMD", "rpk", "cluster", "info", "--brokers", "redpanda:9092"]
+      test: ["CMD", "rpk", "cluster", "info", "--brokers", "localhost:9092"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -45,15 +45,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-    command:
-      - rpk
-      - topic
-      - create
-      - events
-      - model-predictions
-      - --partitions=1
-      - --replicas=1
-      - --brokers=redpanda:9092
+    entrypoint: ["/bin/bash", "-c"]
+    command: "rpk topic create events model-predictions --partitions 1 --replicas 1 --brokers redpanda:9092"
     restart: "no"
 
   redpanda-console:
