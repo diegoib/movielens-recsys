@@ -45,8 +45,10 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-    entrypoint: ["/bin/bash", "-c"]
-    command: "rpk topic create events model-predictions --partitions 1 --replicas 1 --brokers redpanda:9092"
+    entrypoint:
+      - /bin/bash
+      - -c
+      - "rpk topic create events model-predictions -X brokers=redpanda:9092 || true"
     restart: "no"
 
   redpanda-console:
