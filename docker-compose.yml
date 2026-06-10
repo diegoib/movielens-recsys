@@ -75,8 +75,10 @@ services:
       REDPANDA_BROKERS: redpanda:9092
       REDIS_HOST: redis
     depends_on:
-      - redpanda-init
-      - redis
+      redpanda-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
     restart: on-failure
 
   recsys-serving:
