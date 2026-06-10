@@ -94,6 +94,34 @@ services:
       REDPANDA_BROKERS: redpanda:9092
     volumes:
       - ./artifacts:/app/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    restart: unless-stopped
+
+  simulator:
+    build:
+      context: .
+      dockerfile: docker/simulator/Dockerfile
+    depends_on:
+      recsys-serving:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - src/simulator/online_simulator.py
+      - --api_url=http://recsys-serving:8000
+      - --redpanda_brokers=redpanda:9092
+      - --max_concurrent=10
+      - --session_gap_min=10
+      - --session_gap_max=60
+      - --watch_time_seconds=3
     restart: unless-stopped
 
 volumes:

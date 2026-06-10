@@ -1514,6 +1514,7 @@ serving = [
 simulator = [
     { name = "httpx" },
     { name = "kafka-python" },
+    { name = "tyro" },
 ]
 streaming = [
     { name = "redis" },
@@ -1564,6 +1565,7 @@ all = [
     { name = "tqdm", specifier = "==4.67.1" },
     { name = "types-redis", specifier = ">=4.6.0" },
     { name = "tyro", specifier = "==1.0.4" },
+    { name = "tyro", specifier = ">=1.0.0" },
 ]
 data = [
     { name = "gcsfs", specifier = ">=2024.9.0" },
@@ -1597,6 +1599,7 @@ serving = [
 simulator = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "kafka-python", specifier = ">=2.0.0" },
+    { name = "tyro", specifier = ">=1.0.0" },
 ]
 streaming = [{ name = "redis", specifier = ">=5.0.0" }]
 test = [

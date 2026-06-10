@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from src.simulator.online_simulator import _build_event, _click_prob, _sample_lifetime
+from src.simulator.online_simulator import UserPool, _build_event, _click_prob
 
 
 class TestClickProb:
@@ -33,7 +33,6 @@ class TestClickProb:
             assert 0.0 <= p <= 1.0, f"out of [0,1] for score={score}, temp={temp}"
 
     def test_higher_temperature_amplifies_high_score(self) -> None:
-        # With many samples the mean probability should be higher at temp=3 than temp=0.5
         n = 300
         low_temp = sum(_click_prob(0.85, 0.5) for _ in range(n)) / n
         high_temp = sum(_click_prob(0.85, 3.0) for _ in range(n)) / n
@@ -66,18 +65,21 @@ class TestBuildEvent:
         assert ev["event_type"] == "impression"
 
 
-class TestSampleLifetime:
-    def test_zero_churn_fraction_always_returns_none(self) -> None:
-        for _ in range(50):
-            assert _sample_lifetime(0.0, 7.0) is None
+class TestUserPool:
+    def test_pick_returns_id_from_pool(self) -> None:
+        pool = UserPool([10, 20, 30], cold_user_id_base=1000)
+        for _ in range(20):
+            assert pool.pick() in {10, 20, 30}
 
-    def test_full_churn_fraction_always_returns_float(self) -> None:
-        for _ in range(50):
-            result = _sample_lifetime(1.0, 7.0)
-            assert isinstance(result, float) and result > 0
+    def test_add_cold_user_grows_pool(self) -> None:
+        pool = UserPool([1, 2, 3], cold_user_id_base=1000)
+        assert len(pool) == 3
+        pool.add_cold_user()
+        assert len(pool) == 4
 
-    def test_churn_fraction_half_splits_roughly_evenly(self) -> None:
-        results = [_sample_lifetime(0.5, 7.0) for _ in range(400)]
-        n_none = sum(1 for r in results if r is None)
-        # 50% ± 10% tolerance
-        assert 160 < n_none < 240
+    def test_add_cold_user_increments_id(self) -> None:
+        pool = UserPool([], cold_user_id_base=200_000)
+        uid1 = pool.add_cold_user()
+        uid2 = pool.add_cold_user()
+        assert uid1 == 200_000
+        assert uid2 == 200_001

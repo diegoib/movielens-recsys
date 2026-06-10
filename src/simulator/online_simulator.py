@@ -1,19 +1,19 @@
 """Simulator 2: concurrent virtual users driving the live serving API.
 
-Architecture:
+Architecture — worker pool:
   main()
-    ├─ load warm user IDs from GCS training dataset (or local fallback)
-    ├─ launch each warm user as a staggered asyncio task
-    ├─ start background spawner for cold-start users
-    └─ wait indefinitely (Ctrl+C cancels and closes cleanly)
+    ├─ pool = UserPool(all_warm_ids)     ← all training dataset user IDs in memory
+    ├─ for _ in range(max_concurrent):   ← exactly K active sessions at any time
+    │    create_task(_worker(pool))
+    ├─ create_task(_add_cold_users_to_pool())
+    └─ await Event().wait()              ← runs until Ctrl+C
 
-  _run_user()       — infinite session loop per user; stops when lifetime expires (churn)
-  _run_session()    — one page-browsing session: GET /recommendations → POST events
-  _spawn_cold_users() — periodically introduces new cold-start users
+  _worker()  — picks a random user from the pool, runs their session, sleeps, repeats
+  _run_session() — one browsing session: GET /recommendations → POST impression/click events
 
-Warm users (IDs from the training dataset) may already have features in Redis.
-Cold-start users (IDs above warm_user_id_max) start with zero-vector recommendations;
-their first click seeds Redis via the streaming processor.
+The pool starts with all MovieLens user IDs (warm users, may have Redis features) and
+grows as cold-start users are added at rate new_users_per_hour.  With K=10 workers and
+138K users in the pool, each user gets picked roughly once every 138K/10 ≈ 13K sessions.
 """
 
 from __future__ import annotations
@@ -36,27 +36,67 @@ log = logging.getLogger(__name__)
 @dataclasses.dataclass
 class SimulatorConfig:
     api_url: str = "http://localhost:8000"
-    # ── Warm user pool ────────────────────────────────────────────────────────
+    # ── Concurrency ───────────────────────────────────────────────────────────
+    max_concurrent: int = 10  # number of active session workers
+    # ── User pool ─────────────────────────────────────────────────────────────
     gcs_dataset_path: str | None = None  # gs://bucket/.../train_dataset.parquet
-    n_warm_users: int = 50
-    warm_user_id_max: int = 138493  # fallback when gcs_dataset_path is not set
-    stagger_seconds: float = 2.0  # delay between launching each warm user
-    # ── Churn model ───────────────────────────────────────────────────────────
-    churn_fraction: float = 0.3  # fraction of warm users that eventually churn
-    churn_lifetime_days: float = 7.0  # mean churn lifetime (exponential distribution)
-    cold_churn_fraction: float = 0.8  # most cold-start users churn quickly
-    # ── Cold-start user spawner ───────────────────────────────────────────────
-    new_users_per_hour: float = 6.0  # 1 new user every 10 minutes by default
-    cold_user_id_base: int = 200000  # IDs above the historical MovieLens range
+    warm_user_id_max: int = 138493  # fallback pool range when gcs_dataset_path unset
+    # ── Cold-start users ──────────────────────────────────────────────────────
+    new_users_per_hour: float = 6.0  # rate at which new cold-start IDs join the pool
+    cold_user_id_base: int = 200_000  # cold-start IDs start here (above MovieLens range)
     # ── Session behavior ──────────────────────────────────────────────────────
     temperature: float = 1.0
     max_pages_per_session: int = 5
-    session_gap_min: float = 20.0
-    session_gap_max: float = 120.0
-    watch_time_seconds: float = 10.0
+    session_gap_min: float = 10.0
+    session_gap_max: float = 60.0
+    watch_time_seconds: float = 3.0
     # ── Kafka ─────────────────────────────────────────────────────────────────
     redpanda_brokers: str | None = None
     seed: int | None = None
+
+
+# ── User pool ─────────────────────────────────────────────────────────────────
+
+
+class UserPool:
+    """Mutable pool of user IDs shared across all workers.
+
+    asyncio is single-threaded so no locking is needed: random.choice and
+    list.append are not interrupted between awaits.
+    """
+
+    def __init__(self, warm_ids: list[int], cold_user_id_base: int) -> None:
+        self._ids = warm_ids
+        self._next_cold = cold_user_id_base
+
+    def pick(self) -> int:
+        return random.choice(self._ids)
+
+    def add_cold_user(self) -> int:
+        uid = self._next_cold
+        self._ids.append(uid)
+        self._next_cold += 1
+        return uid
+
+    def __len__(self) -> int:
+        return len(self._ids)
+
+
+def _load_warm_user_ids(config: SimulatorConfig) -> list[int]:
+    """Return all unique user IDs from the training dataset, or a range fallback."""
+    if config.gcs_dataset_path:
+        try:
+            import polars as pl
+
+            df = pl.scan_parquet(config.gcs_dataset_path)
+            ids: list[int] = df.select("user_id").unique().collect()["user_id"].to_list()
+            log.info("Loaded %d unique user IDs from %s", len(ids), config.gcs_dataset_path)
+            return ids
+        except Exception as exc:
+            log.warning("Failed to load user IDs from GCS (%s). Using local fallback.", exc)
+    ids = list(range(1, config.warm_user_id_max + 1))
+    log.info("Using local fallback pool: %d user IDs (1..%d)", len(ids), config.warm_user_id_max)
+    return ids
 
 
 # ── Pure helper functions (tested independently) ──────────────────────────────
@@ -99,38 +139,6 @@ def _build_event(
         "session_id": str(session_id),
         "label": label,
     }
-
-
-def _sample_lifetime(churn_fraction: float, churn_lifetime_days: float) -> float | None:
-    """Sample a user lifetime in seconds, or None for a permanent (power) user.
-
-    Uses an exponential distribution: many users churn quickly, a few stay much longer.
-    churn_fraction=0 → always None (all power users).
-    churn_fraction=1 → always a finite lifetime drawn from the exponential.
-    """
-    if random.random() >= churn_fraction:
-        return None  # power user: never churns
-    days = random.expovariate(1.0 / churn_lifetime_days)
-    return days * 86400  # convert to seconds
-
-
-def _load_warm_user_ids(config: SimulatorConfig) -> list[int]:
-    """Return a list of n_warm_users user IDs.
-
-    Reads unique user_ids from the GCS training dataset when gcs_dataset_path is set.
-    Falls back to a random sample from range(1, warm_user_id_max+1) otherwise.
-    """
-    if config.gcs_dataset_path:
-        try:
-            import polars as pl
-
-            df = pl.scan_parquet(config.gcs_dataset_path)
-            ids: list[int] = df.select("user_id").unique().collect()["user_id"].to_list()
-            log.info("Loaded %d unique user IDs from %s", len(ids), config.gcs_dataset_path)
-            return random.sample(ids, min(config.n_warm_users, len(ids)))
-        except Exception as exc:
-            log.warning("Failed to load user IDs from GCS (%s). Using local fallback.", exc)
-    return random.sample(range(1, config.warm_user_id_max + 1), config.n_warm_users)
 
 
 # ── Async simulation coroutines ───────────────────────────────────────────────
@@ -182,7 +190,7 @@ async def _run_session(
                 except Exception as exc:
                     log.debug("model-predictions publish failed: %s", exc)
 
-        # 3. Decide clicks — emit impression for every rec, click for at most one
+        # 3. Decide clicks — impression for every rec, at most one click per page
         clicked_page = False
         for rec in recs:
             total_seen += 1
@@ -204,53 +212,35 @@ async def _run_session(
 
                 clicked_page = True
                 await asyncio.sleep(config.watch_time_seconds)
-                break  # one click per page → return to home
+                break  # one click per page → back to home
 
         if not clicked_page:
-            break  # user lost interest; end session early
+            break  # lost interest; end session early
 
     log.debug("user %d: session done (clicks=%d/%d)", user_id, total_clicks, total_seen)
 
 
-async def _run_user(
-    user_id: int,
+async def _worker(
+    pool: UserPool,
     config: SimulatorConfig,
     client: httpx.AsyncClient,
     producer: Any | None,
-    lifetime_seconds: float | None,
 ) -> None:
-    """Run continuous sessions for a user until their lifetime expires (churn) or forever."""
-    deadline = time.monotonic() + lifetime_seconds if lifetime_seconds is not None else float("inf")
-
-    while time.monotonic() < deadline:
+    """One active session slot: pick user → session → sleep → repeat."""
+    while True:
+        user_id = pool.pick()
         await _run_session(user_id, config, client, producer)
         gap = random.uniform(config.session_gap_min, config.session_gap_max)
-        remaining = deadline - time.monotonic()
-        await asyncio.sleep(min(gap, remaining))
-
-    if lifetime_seconds is not None:
-        log.info("user %d churned after %.1f days", user_id, lifetime_seconds / 86400)
+        await asyncio.sleep(gap)
 
 
-async def _spawn_cold_users(
-    config: SimulatorConfig,
-    client: httpx.AsyncClient,
-    producer: Any | None,
-) -> None:
-    """Periodically introduce new cold-start users."""
-    interval = 3600.0 / config.new_users_per_hour
-    next_id = config.cold_user_id_base
-
+async def _add_cold_users_to_pool(pool: UserPool, new_users_per_hour: float) -> None:
+    """Periodically add new cold-start user IDs to the pool."""
+    interval = 3600.0 / new_users_per_hour
     while True:
         await asyncio.sleep(interval)
-        lifetime = _sample_lifetime(config.cold_churn_fraction, config.churn_lifetime_days)
-        asyncio.create_task(_run_user(next_id, config, client, producer, lifetime))
-        log.info(
-            "new cold-start user %d spawned (lifetime=%s)",
-            next_id,
-            f"{lifetime / 86400:.1f}d" if lifetime else "permanent",
-        )
-        next_id += 1
+        uid = pool.add_cold_user()
+        log.info("cold-start user %d added to pool (pool size: %d)", uid, len(pool))
 
 
 async def main(config: SimulatorConfig) -> None:
@@ -271,29 +261,18 @@ async def main(config: SimulatorConfig) -> None:
             log.warning("Kafka producer init failed (%s). Inference log disabled.", exc)
 
     warm_ids = _load_warm_user_ids(config)
+    pool = UserPool(warm_ids, config.cold_user_id_base)
     log.info(
-        "Starting simulator: %d warm users, stagger=%.1fs, new_users/h=%.1f",
-        len(warm_ids),
-        config.stagger_seconds,
-        config.new_users_per_hour,
+        "Pool: %d warm users — launching %d concurrent workers",
+        len(pool),
+        config.max_concurrent,
     )
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Stagger warm user launches
-            for uid in warm_ids:
-                lifetime = _sample_lifetime(config.churn_fraction, config.churn_lifetime_days)
-                asyncio.create_task(_run_user(uid, config, client, producer, lifetime))
-                log.info(
-                    "warm user %d launched (lifetime=%s)",
-                    uid,
-                    f"{lifetime / 86400:.1f}d" if lifetime else "permanent",
-                )
-                await asyncio.sleep(config.stagger_seconds)
-
-            asyncio.create_task(_spawn_cold_users(config, client, producer))
-
-            # Run until Ctrl+C
+            for _ in range(config.max_concurrent):
+                asyncio.create_task(_worker(pool, config, client, producer))
+            asyncio.create_task(_add_cold_users_to_pool(pool, config.new_users_per_hour))
             await asyncio.Event().wait()
     except asyncio.CancelledError:
         log.info("Simulator shutting down.")
