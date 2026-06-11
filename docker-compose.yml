@@ -67,6 +67,25 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
+  redis-warmup:
+    build:
+      context: .
+      dockerfile: docker/serving/Dockerfile
+    depends_on:
+      redis:
+        condition: service_started
+    environment:
+      REDIS_HOST: redis
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - src/features/load_warm_users.py
+      - --parquet_path=gs://movielens-recsys-proj-data/processed/train_dataset.parquet
+      - --redis_host=redis
+    restart: "no"
+
   streaming-processor:
     build:
       context: .
@@ -111,6 +130,8 @@ services:
       recsys-serving:
         condition: service_healthy
       redpanda-init:
+        condition: service_completed_successfully
+      redis-warmup:
         condition: service_completed_successfully
     command:
       - uv

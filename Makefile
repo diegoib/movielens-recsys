@@ -63,6 +63,11 @@ data-upload: ## Upload raw + processed data to GCS
 features: ## Compute offline features from events
 	uv run python src/features/build_features.py
 
+redis-warmup: ## Load warm user features from training dataset into Redis
+	uv run python src/features/load_warm_users.py \
+		--parquet_path $(or $(GCS_DATASET_PATH),data/processed/train_dataset.parquet) \
+		--redis_host $(or $(REDIS_HOST),localhost)
+
 # ── Model training ────────────────────────────────────────────────────────────
 
 train-local-debug: ## Smoke test: 10K rows, 2 epochs, no MLflow
