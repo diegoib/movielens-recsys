@@ -141,6 +141,7 @@ services:
       - src/simulator/online_simulator.py
       - --api_url=http://recsys-serving:8000
       - --redpanda_brokers=redpanda:9092
+      - --gcs_dataset_path=gs://movielens-recsys-proj-data/processed/train_dataset.parquet
       - --max_concurrent=10
       - --session_gap_min=10
       - --session_gap_max=60
