@@ -63,6 +63,11 @@ data-upload: ## Upload raw + processed data to GCS
 features: ## Compute offline features from events
 	uv run python src/features/build_features.py
 
+redis-warmup: ## Load warm user features from training dataset into Redis
+	uv run python src/features/load_warm_users.py \
+		--parquet_path $(or $(GCS_DATASET_PATH),data/processed/train_dataset.parquet) \
+		--redis_host $(or $(REDIS_HOST),localhost)
+
 # ── Model training ────────────────────────────────────────────────────────────
 
 train-local-debug: ## Smoke test: 10K rows, 2 epochs, no MLflow
@@ -119,13 +124,13 @@ streaming-status: ## Check container status on streaming VM
 
 # ── Simulator 2 ───────────────────────────────────────────────────────────────
 
-simulate: ## Run Simulator 2 locally (N=10 default users)
-	uv run python src/simulator/online_simulator.py --n_users $(or $(N),10)
+simulate: ## Run Simulator 2 continuously (Ctrl+C to stop, N=warm users default 10)
+	uv run python src/simulator/online_simulator.py --n_warm_users $(or $(N),10)
 
-simulate-gcp: ## Run Simulator 2 as Cloud Run Job (N=1000 default)
+simulate-gcp: ## Run Simulator 2 as Cloud Run Job (N=warm users default 1000)
 	gcloud run jobs execute simulator-job \
 		--region $(GCP_REGION) --project $(GCP_PROJECT_ID) \
-		--args="--n_users,$(or $(N),1000)"
+		--args="--n_warm_users,$(or $(N),1000)"
 
 # ── Airflow ───────────────────────────────────────────────────────────────────
 
