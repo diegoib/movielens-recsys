@@ -123,6 +123,19 @@ def load(config: WarmupConfig) -> None:
 
 
 if __name__ == "__main__":
-    import tyro
+    import argparse
 
-    load(tyro.cli(WarmupConfig))
+    parser = argparse.ArgumentParser(description="Load warm user features into Redis")
+    parser.add_argument("--parquet_path", default="data/processed/train_dataset.parquet")
+    parser.add_argument("--redis_host", default=os.environ.get("REDIS_HOST", "localhost"))
+    parser.add_argument("--redis_port", type=int, default=6379)
+    parser.add_argument("--batch_size", type=int, default=500)
+    args = parser.parse_args()
+    load(
+        WarmupConfig(
+            parquet_path=args.parquet_path,
+            redis_host=args.redis_host,
+            redis_port=args.redis_port,
+            batch_size=args.batch_size,
+        )
+    )
