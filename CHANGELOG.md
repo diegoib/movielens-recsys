@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.9.0 (2026-06-11)
+
+### Features
+
+- Online simulator ([#11](https://github.com/diegoib/movielens-recsys/pull/11),
+  [`8f69a33`](https://github.com/diegoib/movielens-recsys/commit/8f69a33e1b83dc03169acd826d1a125f0307a009))
+
+
 ## v0.8.0 (2026-06-06)
 
 ### Features
