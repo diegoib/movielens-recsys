@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.10.0 (2026-06-12)
+
+### Features
+
+- Retraining ([#12](https://github.com/diegoib/movielens-recsys/pull/12),
+  [`b10502b`](https://github.com/diegoib/movielens-recsys/commit/b10502b92acb80822478d13a1be5b2e049b4e879))
+
+
 ## v0.9.0 (2026-06-11)
 
 ### Features
