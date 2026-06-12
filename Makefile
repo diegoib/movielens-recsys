@@ -124,13 +124,25 @@ streaming-status: ## Check container status on streaming VM
 
 # ── Simulator 2 ───────────────────────────────────────────────────────────────
 
-simulate: ## Run Simulator 2 continuously (Ctrl+C to stop, N=warm users default 10)
-	uv run python src/simulator/online_simulator.py --n_warm_users $(or $(N),10)
+simulate: ## Run Simulator 2 continuously (Ctrl+C to stop, N=concurrent workers default 10)
+	uv run python src/simulator/online_simulator.py --max_concurrent $(or $(N),10)
 
-simulate-gcp: ## Run Simulator 2 as Cloud Run Job (N=warm users default 1000)
+simulate-gcp: ## Run Simulator 2 as Cloud Run Job (N=concurrent workers default 1000)
 	gcloud run jobs execute simulator-job \
 		--region $(GCP_REGION) --project $(GCP_PROJECT_ID) \
-		--args="--n_warm_users,$(or $(N),1000)"
+		--args="--max_concurrent,$(or $(N),1000)"
+
+# ── Phase 9: Retraining ───────────────────────────────────────────────────────
+
+sink-local: ## Run events sink locally (persists Redpanda topics to /tmp)
+	uv run python src/data/events_sink.py \
+		--gcs_events_path /tmp/recsys-events \
+		--gcs_inference_path /tmp/recsys-inference-logs
+
+retrain-dataset: ## Build retraining dataset from events + inference logs (since 2023)
+	uv run python src/data/build_retrain_dataset.py \
+		--since_date $(or $(SINCE),2023-01-01) \
+		--output_path $(or $(OUTPUT),/tmp/retrain.parquet)
 
 # ── Airflow ───────────────────────────────────────────────────────────────────
 
