@@ -44,6 +44,9 @@ class Event(BaseModel):
     rating: float | None = None
     session_id: uuid.UUID
     label: int  # 0 or 1
+    recommendation_id: str | None = (
+        None  # correlation ID linking events to the recommendation that triggered them
+    )
 
     @field_validator("event_type")
     @classmethod

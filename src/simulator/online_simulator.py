@@ -20,13 +20,11 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
 import logging
 import math
 import random
 import time
 import uuid
-from typing import Any
 
 import httpx
 
@@ -50,8 +48,6 @@ class SimulatorConfig:
     session_gap_min: float = 10.0
     session_gap_max: float = 60.0
     watch_time_seconds: float = 3.0
-    # ── Kafka ─────────────────────────────────────────────────────────────────
-    redpanda_brokers: str | None = None
     seed: int | None = None
 
 
@@ -127,6 +123,7 @@ def _build_event(
     event_type: str,
     session_id: uuid.UUID,
     label: int,
+    recommendation_id: str | None = None,
 ) -> dict:
     """Build the JSON payload for POST /events."""
     return {
@@ -138,6 +135,7 @@ def _build_event(
         "rating": None,
         "session_id": str(session_id),
         "label": label,
+        "recommendation_id": recommendation_id,
     }
 
 
@@ -148,7 +146,6 @@ async def _run_session(
     user_id: int,
     config: SimulatorConfig,
     client: httpx.AsyncClient,
-    producer: Any | None,
 ) -> None:
     """Run one page-browsing session for a user."""
     session_id = uuid.uuid4()
@@ -163,7 +160,9 @@ async def _run_session(
                 params={"n": 5},
             )
             resp.raise_for_status()
-            recs: list[dict] = resp.json().get("recommendations", [])
+            body = resp.json()
+            recommendation_id: str | None = body.get("recommendation_id")
+            recs: list[dict] = body.get("recommendations", [])
         except Exception as exc:
             log.warning("user %d: recommendations request failed: %s", user_id, exc)
             break
@@ -171,32 +170,15 @@ async def _run_session(
         if not recs:
             break
 
-        # 2. Publish inference log to model-predictions topic
-        if producer is not None:
-            ts = int(time.time())
-            for pos, rec in enumerate(recs):
-                try:
-                    producer.send(
-                        "model-predictions",
-                        {
-                            "user_id": user_id,
-                            "movie_id": rec["movie_id"],
-                            "score": rec["score"],
-                            "position": pos,
-                            "timestamp": ts,
-                            "session_id": str(session_id),
-                        },
-                    )
-                except Exception as exc:
-                    log.debug("model-predictions publish failed: %s", exc)
-
-        # 3. Decide clicks — impression for every rec, at most one click per page
+        # 2. Decide clicks — impression for every rec, at most one click per page
         clicked_page = False
         for rec in recs:
             total_seen += 1
             prob = _click_prob(rec["score"], config.temperature)
 
-            imp = _build_event(user_id, rec["movie_id"], "impression", session_id, 0)
+            imp = _build_event(
+                user_id, rec["movie_id"], "impression", session_id, 0, recommendation_id
+            )
             try:
                 await client.post(f"{config.api_url}/events", json=imp)
             except Exception:
@@ -204,7 +186,9 @@ async def _run_session(
 
             if random.random() < prob:
                 total_clicks += 1
-                click = _build_event(user_id, rec["movie_id"], "click", session_id, 1)
+                click = _build_event(
+                    user_id, rec["movie_id"], "click", session_id, 1, recommendation_id
+                )
                 try:
                     await client.post(f"{config.api_url}/events", json=click)
                 except Exception:
@@ -224,12 +208,11 @@ async def _worker(
     pool: UserPool,
     config: SimulatorConfig,
     client: httpx.AsyncClient,
-    producer: Any | None,
 ) -> None:
     """One active session slot: pick user → session → sleep → repeat."""
     while True:
         user_id = pool.pick()
-        await _run_session(user_id, config, client, producer)
+        await _run_session(user_id, config, client)
         gap = random.uniform(config.session_gap_min, config.session_gap_max)
         await asyncio.sleep(gap)
 
@@ -247,19 +230,6 @@ async def main(config: SimulatorConfig) -> None:
     if config.seed is not None:
         random.seed(config.seed)
 
-    producer: Any | None = None
-    if config.redpanda_brokers:
-        try:
-            from kafka import KafkaProducer
-
-            producer = KafkaProducer(
-                bootstrap_servers=config.redpanda_brokers,
-                value_serializer=lambda v: json.dumps(v).encode(),
-            )
-            log.info("Kafka producer connected to %s", config.redpanda_brokers)
-        except Exception as exc:
-            log.warning("Kafka producer init failed (%s). Inference log disabled.", exc)
-
     warm_ids = _load_warm_user_ids(config)
     pool = UserPool(warm_ids, config.cold_user_id_base)
     log.info(
@@ -271,14 +241,11 @@ async def main(config: SimulatorConfig) -> None:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             for _ in range(config.max_concurrent):
-                asyncio.create_task(_worker(pool, config, client, producer))
+                asyncio.create_task(_worker(pool, config, client))
             asyncio.create_task(_add_cold_users_to_pool(pool, config.new_users_per_hour))
             await asyncio.Event().wait()
     except asyncio.CancelledError:
         log.info("Simulator shutting down.")
-    finally:
-        if producer is not None:
-            producer.close()
 
 
 if __name__ == "__main__":

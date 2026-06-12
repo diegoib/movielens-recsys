@@ -1,3 +1,4 @@
 - mejorar modelo, overfitting desde la epoch 2
 - quedarme con el modelo de la mejor epoch
 - que el promote del modelo sea si el auc mejora sobre test, es decir el anterior modelo tiene que evaluar sobre el nuevo test
+- que el modelo two towers funcione como debe: hace un feedforward por la torre de usuario, y luego calcula distancias con los otros, no como batch

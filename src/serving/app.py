@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -72,6 +74,7 @@ class RecommendedMovie(BaseModel):
 
 class RecommendationResponse(BaseModel):
     user_id: int
+    recommendation_id: str
     recommendations: list[RecommendedMovie]
 
 
@@ -88,6 +91,8 @@ def recommendations(user_id: int, n: int = 5) -> RecommendationResponse:
     scorer = _scorer
     if scorer is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
+
+    recommendation_id = str(uuid.uuid4())
 
     # Fetch user features from Redis (empty dict = cold start → zero vector)
     user_data: dict = {}
@@ -106,7 +111,9 @@ def recommendations(user_id: int, n: int = 5) -> RecommendationResponse:
     # Filter to movies that are in the cache (safety check)
     candidate_ids = [mid for mid in candidate_ids if mid in scorer.movie_cache]
     if not candidate_ids:
-        return RecommendationResponse(user_id=user_id, recommendations=[])
+        return RecommendationResponse(
+            user_id=user_id, recommendation_id=recommendation_id, recommendations=[]
+        )
 
     scores = scorer.score(uid_idx, user_behavior, candidate_ids)
 
@@ -119,7 +126,34 @@ def recommendations(user_id: int, n: int = 5) -> RecommendationResponse:
         )
         for i in top_indices
     ]
-    return RecommendationResponse(user_id=user_id, recommendations=recs)
+
+    # Log inference to model-predictions topic: one record per recommendation,
+    # including the user features at prediction time for retraining.
+    if _producer is not None:
+        ts = int(time.time())
+        for pos, rec in enumerate(recs):
+            try:
+                _producer.send(
+                    "model-predictions",
+                    {
+                        "recommendation_id": recommendation_id,
+                        "user_id": user_id,
+                        "movie_id": rec.movie_id,
+                        "score": rec.score,
+                        "position": pos,
+                        "timestamp": ts,
+                        "model_version": scorer.model_version,
+                        "user_features": json.dumps(
+                            user_data
+                        ),  # string for consistent Parquet schema
+                    },
+                )
+            except Exception as exc:
+                log.debug("model-predictions publish failed: %s", exc)
+
+    return RecommendationResponse(
+        user_id=user_id, recommendation_id=recommendation_id, recommendations=recs
+    )
 
 
 @app.post("/events", status_code=200)

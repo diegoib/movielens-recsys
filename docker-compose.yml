@@ -122,6 +122,24 @@ services:
       retries: 8
     restart: unless-stopped
 
+  events-sink:
+    build:
+      context: .
+      dockerfile: docker/serving/Dockerfile
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - src/data/events_sink.py
+      - --redpanda_brokers=redpanda:9092
+      - --gcs_events_path=gs://${GCP_PROJECT_ID}-data/events
+      - --gcs_inference_path=gs://${GCP_PROJECT_ID}-data/inference-logs
+    restart: unless-stopped
+
   simulator:
     build:
       context: .
@@ -140,7 +158,6 @@ services:
       - python
       - src/simulator/online_simulator.py
       - --api_url=http://recsys-serving:8000
-      - --redpanda_brokers=redpanda:9092
       - --gcs_dataset_path=gs://movielens-recsys-proj-data/processed/train_dataset.parquet
       - --max_concurrent=10
       - --session_gap_min=10

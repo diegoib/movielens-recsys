@@ -24,9 +24,10 @@ class OnnxScorer:
         mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI")
         if not model_dir:
             model_dir = os.environ.get("MODEL_DIR", "artifacts/models")
+        self.model_version: str = "unknown"
         if mlflow_uri:
             try:
-                model_dir = self._resolve_from_mlflow(
+                model_dir, self.model_version = self._resolve_from_mlflow(
                     mlflow_uri, os.environ.get("MLFLOW_MODEL_NAME", "two-tower-recsys")
                 )
             except Exception as exc:
@@ -133,8 +134,8 @@ class OnnxScorer:
     # ── MLflow resolution ─────────────────────────────────────────────────────
 
     @staticmethod
-    def _resolve_from_mlflow(tracking_uri: str, model_name: str) -> str:
-        """Return the GCS artifact path for the Production model version.
+    def _resolve_from_mlflow(tracking_uri: str, model_name: str) -> tuple[str, str]:
+        """Return (artifact_path, version_str) for the Production model.
 
         The returned path points to the model/ subfolder of the MLflow run, which
         contains model.onnx, vocab.json, and movie_features.parquet.
@@ -154,7 +155,7 @@ class OnnxScorer:
                 raise RuntimeError(f"No Production model in MLflow for '{model_name}'")
             run_id: str = versions[0].run_id or ""
             artifact_uri = client.get_run(run_id).info.artifact_uri
-            return f"{artifact_uri}/model"
+            return f"{artifact_uri}/model", str(versions[0].version)
         finally:
             socket.setdefaulttimeout(old_timeout)
 
