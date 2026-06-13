@@ -191,3 +191,66 @@ def test_events_invalid_event_type(client: TestClient) -> None:
     }
     resp = client.post("/events", json=payload)
     assert resp.status_code == 422
+
+
+# ── Phase 10: metrics ─────────────────────────────────────────────────────────
+
+
+def test_recommendations_response_includes_recommendation_id(client: TestClient) -> None:
+    resp = client.get("/recommendations/1")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "recommendation_id" in body
+    assert isinstance(body["recommendation_id"], str)
+    assert len(body["recommendation_id"]) == 36  # UUID format
+
+
+def test_clicks_counter_increments(client: TestClient) -> None:
+    from prometheus_client import REGISTRY
+
+    before = REGISTRY.get_sample_value("recsys_clicks_total") or 0.0
+    client.post(
+        "/events",
+        json={
+            "event_id": str(uuid.uuid4()),
+            "timestamp": 1_700_000_000,
+            "user_id": 1,
+            "movie_id": 42,
+            "event_type": "click",
+            "rating": None,
+            "session_id": str(uuid.uuid4()),
+            "label": 1,
+        },
+    )
+    after = REGISTRY.get_sample_value("recsys_clicks_total") or 0.0
+    assert after == before + 1
+
+
+def test_impressions_counter_increments(client: TestClient) -> None:
+    from prometheus_client import REGISTRY
+
+    before = REGISTRY.get_sample_value("recsys_impressions_total") or 0.0
+    client.post(
+        "/events",
+        json={
+            "event_id": str(uuid.uuid4()),
+            "timestamp": 1_700_000_000,
+            "user_id": 1,
+            "movie_id": 42,
+            "event_type": "impression",
+            "rating": None,
+            "session_id": str(uuid.uuid4()),
+            "label": 0,
+        },
+    )
+    after = REGISTRY.get_sample_value("recsys_impressions_total") or 0.0
+    assert after == before + 1
+
+
+def test_metrics_endpoint_exposes_business_metrics(client: TestClient) -> None:
+    client.get("/recommendations/1")  # ensure at least one recommendation was served
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "recsys_recommendations_served_total" in body
+    assert "recsys_recommendation_score" in body

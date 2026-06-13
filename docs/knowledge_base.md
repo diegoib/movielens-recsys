@@ -7,3 +7,5 @@ Poner
 - como funciona flink, cómo le llega la información, qué hace transformaciones hace y donde y cómo la entrega
 - como se hace el predict, cómo la arquitectura del two towers mejora la latencia, de donde se toman los datos, transformaciones, etc.
 - como funciona el simulador online, temperatura, cómo funciona asyncio
+- flujo de los datos online, cómo se generan, como llegan a gcs (servicio y de donde)
+- explicar prometeus y grafana, cómo funcionan, qué son los archivos que hay en la carpeta de docker, dónde se llaman.

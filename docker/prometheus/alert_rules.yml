@@ -1,0 +1,36 @@
+groups:
+  - name: recsys
+    rules:
+      - alert: LowCTR
+        expr: >
+          rate(recsys_clicks_total[5m])
+          /
+          rate(recsys_impressions_total[5m]) < 0.01
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CTR below 1% for 10 minutes"
+          description: "Click-through rate is {{ $value | humanizePercentage }}. Model may be degraded."
+
+      - alert: HighRecommendationLatency
+        expr: >
+          histogram_quantile(
+            0.95,
+            rate(http_request_duration_seconds_bucket{endpoint="/recommendations/{user_id}"}[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "P95 recommendation latency > 500ms"
+          description: "P95 latency is {{ $value | humanizeDuration }}."
+
+      - alert: NoRecommendationsServed
+        expr: rate(recsys_recommendations_served_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No recommendations served for 5 minutes"
+          description: "The serving API may be down or the simulator stopped."

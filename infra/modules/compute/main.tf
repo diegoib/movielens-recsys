@@ -11,13 +11,13 @@ variable "datagen_vm_sa" {
   description = "Service account email to attach to the datagen VM"
 }
 
-# ── Streaming VM (e2-medium, preemptible) ─────────────────────────────────────
+# ── Streaming VM (e2-standard-2, preemptible) ────────────────────────────────
 
 resource "google_compute_instance" "streaming_vm" {
   name           = "streaming-vm"
   project        = var.project_id
   zone           = var.zone
-  machine_type   = "e2-medium"
+  machine_type   = "e2-standard-2"
   desired_status = "TERMINATED"
 
   boot_disk {
