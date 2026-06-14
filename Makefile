@@ -146,15 +146,21 @@ retrain-dataset: ## Build retraining dataset from events + inference logs (since
 
 # ── Airflow ───────────────────────────────────────────────────────────────────
 
-airflow-deploy: ## Deploy DAGs to Airflow VM
+airflow-setup: ## First-time Airflow setup on the VM (copy compose, init DB, start services)
+	gcloud compute scp docker/airflow/docker-compose.yml airflow-vm:/opt/airflow/docker-compose.yml \
+		--project $(GCP_PROJECT_ID)
+	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
+		"cd /opt/airflow && docker compose up -d postgres && sleep 5 && docker compose run --rm airflow-init && docker compose up -d"
+
+airflow-deploy: ## Deploy DAGs and restart scheduler
 	gcloud compute scp dags/ airflow-vm:/opt/airflow/dags --recurse \
 		--project $(GCP_PROJECT_ID)
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
-		"docker compose restart airflow-scheduler"
+		"cd /opt/airflow && docker compose restart airflow-scheduler"
 
 retrain-manual: ## Manually trigger the weekly_retrain DAG
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
-		"docker compose exec airflow-scheduler airflow dags trigger weekly_retrain"
+		"cd /opt/airflow && docker compose exec airflow-scheduler airflow dags trigger weekly_retrain"
 
 # ── Monitoring ────────────────────────────────────────────────────────────────
 
