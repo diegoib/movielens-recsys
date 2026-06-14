@@ -192,6 +192,36 @@ resource "google_compute_firewall" "allow_mlflow" {
 }
 
 
+# Allow Prometheus UI from anywhere
+resource "google_compute_firewall" "allow_prometheus" {
+  name    = "allow-prometheus-9090"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["9090"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["streaming-vm"]
+}
+
+# Allow Grafana UI from anywhere
+resource "google_compute_firewall" "allow_grafana" {
+  name    = "allow-grafana-3000"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3000"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["streaming-vm"]
+}
+
 # Allow Cloud Run to reach Redis on the streaming VM via internal GCP network
 resource "google_compute_firewall" "allow_redis_internal" {
   name    = "allow-redis-internal"

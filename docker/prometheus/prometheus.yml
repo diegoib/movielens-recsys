@@ -8,4 +8,6 @@ rule_files:
 scrape_configs:
   - job_name: recsys-serving
     static_configs:
+      # "recsys-serving" resolves if the container is in the same docker-compose network.
+      # If serving runs on Cloud Run, replace with the Cloud Run URL (no port, path /metrics).
       - targets: ["recsys-serving:8000"]
