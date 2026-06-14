@@ -145,8 +145,6 @@ services:
       context: .
       dockerfile: docker/simulator/Dockerfile
     depends_on:
-      recsys-serving:
-        condition: service_healthy
       redpanda-init:
         condition: service_completed_successfully
       redis-warmup:
@@ -157,7 +155,7 @@ services:
       - --no-sync
       - python
       - src/simulator/online_simulator.py
-      - --api_url=http://recsys-serving:8000
+      - --api_url=${RECSYS_API_URL:-http://recsys-serving:8000}
       - --gcs_dataset_path=gs://movielens-recsys-proj-data/processed/train_dataset.parquet
       - --max_concurrent=10
       - --session_gap_min=10
