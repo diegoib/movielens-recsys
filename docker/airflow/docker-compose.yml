@@ -11,7 +11,7 @@ x-airflow-common: &airflow-common
     GCP_PROJECT_ID: ${GCP_PROJECT_ID:-movielens-recsys-proj}
     WORKSPACE: /opt/airflow
   volumes:
-    - /opt/airflow/dags:/opt/airflow/dags:ro
+    - ../../dags:/opt/airflow/dags:ro
     - airflow-data:/opt/airflow
 
 services:
