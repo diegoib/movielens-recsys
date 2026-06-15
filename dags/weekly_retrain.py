@@ -30,7 +30,7 @@ _env = {
 
 with DAG(
     dag_id="weekly_retrain",
-    schedule_interval="@weekly",
+    schedule_interval="@daily",
     start_date=datetime(2026, 1, 1),
     catchup=False,
     default_args={"retries": 1, "retry_delay": 300},

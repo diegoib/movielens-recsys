@@ -103,11 +103,19 @@ resource "google_compute_instance" "airflow_vm" {
     #!/bin/bash
     set -euo pipefail
     apt-get update -q
-    apt-get install -y docker.io docker-compose-plugin
+    apt-get install -y ca-certificates curl git
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+      | tee /etc/apt/sources.list.d/docker.list
+    apt-get update -q
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     systemctl enable docker
     systemctl start docker
     usermod -aG docker ubuntu
-    mkdir -p /opt/airflow
   EOT
 
   tags = ["airflow-vm"]
@@ -220,6 +228,21 @@ resource "google_compute_firewall" "allow_grafana" {
 
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["streaming-vm"]
+}
+
+# Allow Airflow webserver UI from anywhere
+resource "google_compute_firewall" "allow_airflow" {
+  name    = "allow-airflow-8090"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8090"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["airflow-vm"]
 }
 
 # Allow Cloud Run to reach Redis on the streaming VM via internal GCP network
