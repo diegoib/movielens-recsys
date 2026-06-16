@@ -84,7 +84,7 @@ resource "google_compute_instance" "airflow_vm" {
   name           = "airflow-vm"
   project        = var.project_id
   zone           = var.zone
-  machine_type   = "e2-small"
+  machine_type   = "e2-medium"
   desired_status = "TERMINATED"
 
   boot_disk {
