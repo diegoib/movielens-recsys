@@ -146,15 +146,19 @@ retrain-dataset: ## Build retraining dataset from events + inference logs (since
 
 # ── Airflow ───────────────────────────────────────────────────────────────────
 
-airflow-deploy: ## Deploy DAGs to Airflow VM
-	gcloud compute scp dags/ airflow-vm:/opt/airflow/dags --recurse \
-		--project $(GCP_PROJECT_ID)
+airflow-setup: ## First-time Airflow setup: clone repo on VM, init DB, start services
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
-		"docker compose restart airflow-scheduler"
+		"git clone https://github.com/$(GCP_PROJECT_ID)/movielens-recsys ~/movielens-recsys || (cd ~/movielens-recsys && git pull)"
+	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
+		"cd ~/movielens-recsys && docker compose -f docker/airflow/docker-compose.yml run --rm airflow-init && docker compose -f docker/airflow/docker-compose.yml up -d"
 
-retrain-manual: ## Manually trigger the weekly_retrain DAG
+airflow-deploy: ## Pull latest DAGs on the VM and restart scheduler
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
-		"docker compose exec airflow-scheduler airflow dags trigger weekly_retrain"
+		"cd ~/movielens-recsys && git pull && docker compose -f docker/airflow/docker-compose.yml restart airflow-scheduler"
+
+retrain-manual: ## Manually trigger the daily_retrain DAG
+	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
+		"cd ~/movielens-recsys && docker compose -f docker/airflow/docker-compose.yml exec airflow-scheduler airflow dags trigger daily_retrain"
 
 # ── Monitoring ────────────────────────────────────────────────────────────────
 

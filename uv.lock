@@ -1449,7 +1449,7 @@ wheels = [
 
 [[package]]
 name = "movielens-recsys"
-version = "0.9.0"
+version = "0.10.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1510,6 +1510,7 @@ serving = [
     { name = "polars" },
     { name = "prometheus-fastapi-instrumentator" },
     { name = "redis" },
+    { name = "tyro" },
 ]
 simulator = [
     { name = "gcsfs" },
@@ -1598,6 +1599,7 @@ serving = [
     { name = "polars", specifier = "==1.37.1" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
+    { name = "tyro", specifier = ">=1.0.0" },
 ]
 simulator = [
     { name = "gcsfs", specifier = ">=2024.9.0" },

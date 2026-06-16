@@ -11,13 +11,13 @@ variable "datagen_vm_sa" {
   description = "Service account email to attach to the datagen VM"
 }
 
-# ── Streaming VM (e2-medium, preemptible) ─────────────────────────────────────
+# ── Streaming VM (e2-standard-2, preemptible) ────────────────────────────────
 
 resource "google_compute_instance" "streaming_vm" {
   name           = "streaming-vm"
   project        = var.project_id
   zone           = var.zone
-  machine_type   = "e2-medium"
+  machine_type   = "e2-standard-2"
   desired_status = "TERMINATED"
 
   boot_disk {
@@ -84,7 +84,7 @@ resource "google_compute_instance" "airflow_vm" {
   name           = "airflow-vm"
   project        = var.project_id
   zone           = var.zone
-  machine_type   = "e2-micro"
+  machine_type   = "e2-medium"
   desired_status = "TERMINATED"
 
   boot_disk {
@@ -96,18 +96,28 @@ resource "google_compute_instance" "airflow_vm" {
 
   network_interface {
     network = "default"
-    access_config {}
+    access_config {
+      nat_ip = google_compute_address.airflow_vm_static_ip.address
+    }
   }
 
   metadata_startup_script = <<-EOT
     #!/bin/bash
     set -euo pipefail
     apt-get update -q
-    apt-get install -y docker.io docker-compose-plugin
+    apt-get install -y ca-certificates curl git
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+      | tee /etc/apt/sources.list.d/docker.list
+    apt-get update -q
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     systemctl enable docker
     systemctl start docker
     usermod -aG docker ubuntu
-    mkdir -p /opt/airflow
   EOT
 
   tags = ["airflow-vm"]
@@ -192,6 +202,51 @@ resource "google_compute_firewall" "allow_mlflow" {
 }
 
 
+# Allow Prometheus UI from anywhere
+resource "google_compute_firewall" "allow_prometheus" {
+  name    = "allow-prometheus-9090"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["9090"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["streaming-vm"]
+}
+
+# Allow Grafana UI from anywhere
+resource "google_compute_firewall" "allow_grafana" {
+  name    = "allow-grafana-3000"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3000"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["streaming-vm"]
+}
+
+# Allow Airflow webserver UI from anywhere
+resource "google_compute_firewall" "allow_airflow" {
+  name    = "allow-airflow-8090"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8090"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["airflow-vm"]
+}
+
 # Allow Cloud Run to reach Redis on the streaming VM via internal GCP network
 resource "google_compute_firewall" "allow_redis_internal" {
   name    = "allow-redis-internal"
@@ -222,6 +277,14 @@ resource "google_compute_firewall" "allow_redpanda_internal" {
   target_tags   = ["streaming-vm"]
 }
 
+# ── Static IP for airflow VM ──────────────────────────────────────────────────
+
+resource "google_compute_address" "airflow_vm_static_ip" {
+  name    = "airflow-vm-static-ip"
+  project = var.project_id
+  region  = var.region
+}
+
 # ── Outputs ────────────────────────────────────────────────────────────────────
 
 output "streaming_vm_static_ip" {
@@ -234,6 +297,10 @@ output "streaming_vm_external_ip" {
 
 output "streaming_vm_internal_ip" {
   value = google_compute_instance.streaming_vm.network_interface[0].network_ip
+}
+
+output "airflow_vm_static_ip" {
+  value = google_compute_address.airflow_vm_static_ip.address
 }
 
 output "datagen_vm_external_ip" {

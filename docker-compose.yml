@@ -145,8 +145,6 @@ services:
       context: .
       dockerfile: docker/simulator/Dockerfile
     depends_on:
-      recsys-serving:
-        condition: service_healthy
       redpanda-init:
         condition: service_completed_successfully
       redis-warmup:
@@ -157,7 +155,7 @@ services:
       - --no-sync
       - python
       - src/simulator/online_simulator.py
-      - --api_url=http://recsys-serving:8000
+      - --api_url=${RECSYS_API_URL:-http://recsys-serving:8000}
       - --gcs_dataset_path=gs://movielens-recsys-proj-data/processed/train_dataset.parquet
       - --max_concurrent=10
       - --session_gap_min=10
@@ -165,5 +163,34 @@ services:
       - --watch_time_seconds=3
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - recsys-serving
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:11.6.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   mlflow-db:
+  prometheus-data:
+  grafana-data:

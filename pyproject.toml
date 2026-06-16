@@ -25,6 +25,7 @@ serving = [
     "gcsfs>=2024.9.0",
     "polars==1.37.1",
     "kafka-python>=2.0.0",
+    "tyro>=1.0.0",
 ]
 streaming = [
     # apache-flink is NOT listed here: it conflicts with pyarrow>=12 and is only
