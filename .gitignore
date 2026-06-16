@@ -234,3 +234,5 @@ terraform.tfstate.backup
 
 # Personal
 try_tests.ipynb
+artifacts/
+data/
