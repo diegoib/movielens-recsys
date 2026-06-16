@@ -16,14 +16,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import lightning as L
+import numpy as np
 import tyro
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger, MLFlowLogger
 
 from src.data.dataset import RecSysDataModule
-from src.models.export_onnx import export_onnx
+from src.models.export_onnx import export_onnx, precompute_movie_embeddings
 from src.models.lightning_module import TwoTowerLightningModule
 from src.models.two_tower import MovieTower, TwoTowerModel, UserTower
+from src.serving.candidates import MovieRecord, build_movie_meta
 
 # Env var overrides for Cloud Run Job (take precedence over CLI defaults)
 _GCS_DATA = os.environ.get("GCS_DATA_PATH")
@@ -52,7 +54,7 @@ class TrainConfig:
 
     # Output — accepts local paths or gs:// URIs
     checkpoint_dir: str = "artifacts/checkpoints"
-    onnx_output: str = _GCS_ONNX or "artifacts/models/model.onnx"
+    onnx_output: str = _GCS_ONNX or "artifacts/models/user_tower.onnx"
     export_onnx_after_train: bool = True
 
 
@@ -112,7 +114,7 @@ def main(cfg: TrainConfig) -> None:
     if cfg.export_onnx_after_train and not cfg.fast_dev_run:
         output_dir = str(cfg.onnx_output).rsplit("/", 1)[0]
         export_onnx(lit, cfg.onnx_output, dm)
-        _export_serving_artifacts(dm, cfg.data_path, cfg.movies_path, output_dir)
+        _export_serving_artifacts(lit.model, dm, cfg.data_path, cfg.movies_path, output_dir)
         _register_mlflow_model(trainer, cfg.onnx_output, output_dir)
 
 
@@ -160,6 +162,7 @@ def _register_mlflow_model(trainer: L.Trainer, onnx_output: str, output_dir: str
 
 
 def _export_serving_artifacts(
+    model: TwoTowerModel,
     dm: RecSysDataModule,
     data_path: str,
     movies_path: str,
@@ -167,8 +170,8 @@ def _export_serving_artifacts(
 ) -> None:
     """Save vocab.json and movie_features.parquet alongside the ONNX model.
 
-    Both files are needed by the serving layer to reconstruct the exact feature
-    space and vocabulary indices that the model was trained with.
+    movie_features.parquet also gets an `embedding` column: the movie tower run
+    once over the full catalog, so serving never has to re-run it per request.
     """
     import json
 
@@ -222,6 +225,35 @@ def _export_serving_artifacts(
         dtype=pl.Int64,
     )
     movie_feats = movie_feats.with_columns(movie_vocab_series)
+
+    # ── precompute movie tower embeddings ────────────────────────────────────
+    # The movie tower's output only depends on the movie's own features, so we
+    # run it once here over the full catalog instead of once per request.
+    norm_stats: dict[str, tuple[float, float]] = {
+        k: (v[0], v[1]) for k, v in vocab["norm_stats"].items()
+    }
+    movie_idxs = np.array(movie_feats["movie_idx"].to_list(), dtype=np.int64)
+    movie_metas = np.stack(
+        [
+            build_movie_meta(
+                MovieRecord(
+                    movie_id=row["movie_id"],
+                    movie_idx=row["movie_idx"],
+                    title=row["title"] or "",
+                    genres_vector=row["genres_vector"] or [],
+                    genome_top20=row["genome_top20"],
+                    year=row["year"],
+                    popularity_last_30d=row["popularity_last_30d"] or 0,
+                    avg_rating=row["avg_rating"],
+                    embedding=np.empty(0, dtype=np.float32),
+                ),
+                norm_stats,
+            )
+            for row in movie_feats.iter_rows(named=True)
+        ]
+    )
+    embeddings = precompute_movie_embeddings(model, movie_idxs, movie_metas)
+    movie_feats = movie_feats.with_columns(pl.Series("embedding", embeddings.tolist()))
 
     feat_path = f"{output_dir}/movie_features.parquet"
     import io as _io

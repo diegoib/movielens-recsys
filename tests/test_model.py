@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from src.data.dataset import RecSysDataModule
-from src.models.export_onnx import export_onnx
+from src.models.export_onnx import export_onnx, precompute_movie_embeddings
 from src.models.lightning_module import TwoTowerLightningModule
 from src.models.two_tower import MovieTower, TwoTowerModel, UserTower
 
@@ -75,8 +75,23 @@ def test_onnx_roundtrip(tmp_path: Path) -> None:
         user_behavior_dim = _BEHAVIOR
         movie_meta_dim = _META
 
-    export_onnx(lit, tmp_path / "model.onnx", _FakeDM())  # type: ignore[arg-type]
-    assert (tmp_path / "model.onnx").exists()
+    export_onnx(lit, tmp_path / "user_tower.onnx", _FakeDM())  # type: ignore[arg-type]
+    assert (tmp_path / "user_tower.onnx").exists()
+
+
+def test_precompute_movie_embeddings() -> None:
+    model = _make_model()
+    movie_idxs = np.arange(1, 6, dtype=np.int64)
+    movie_metas = np.random.default_rng(0).standard_normal((5, _META)).astype(np.float32)
+
+    embeddings = precompute_movie_embeddings(model, movie_idxs, movie_metas)
+
+    assert embeddings.shape == (5, _OUT)
+    with torch.no_grad():
+        expected = model.encode_movie(
+            torch.from_numpy(movie_idxs), torch.from_numpy(movie_metas)
+        ).numpy()
+    assert np.allclose(embeddings, expected, atol=1e-5)
 
 
 # ── DataModule ────────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ class MovieRecord:
     year: float | None
     popularity_last_30d: int
     avg_rating: float | None
+    embedding: np.ndarray
 
 
 def generate_candidates(

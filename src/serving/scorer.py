@@ -10,7 +10,7 @@ import numpy as np
 import onnxruntime as ort
 import polars as pl
 
-from src.serving.candidates import MovieRecord, build_movie_meta, set_genre_index
+from src.serving.candidates import MovieRecord, set_genre_index
 
 
 class OnnxScorer:
@@ -44,12 +44,11 @@ class OnnxScorer:
             k: (v[0], v[1]) for k, v in vocab["norm_stats"].items()
         }
         self.user_behavior_dim: int = vocab["user_behavior_dim"]
-        self.movie_meta_dim: int = vocab["movie_meta_dim"]
         self.n_genres: int = len(self.genre_index)
 
         set_genre_index(self.genre_index)
 
-        model_bytes = self._load_bytes("model.onnx")
+        model_bytes = self._load_bytes("user_tower.onnx")
         self._session = ort.InferenceSession(model_bytes)
 
         self.movie_cache: dict[int, MovieRecord] = self._load_movie_cache()
@@ -62,27 +61,26 @@ class OnnxScorer:
         user_behavior: np.ndarray,
         movie_ids: list[int],
     ) -> np.ndarray:
-        """Return P(click) scores for each movie_id. Shape: [len(movie_ids)]."""
-        n = len(movie_ids)
-        movie_idxs = np.array(
-            [self.movie_vocab.get(str(mid), 0) for mid in movie_ids], dtype=np.int64
-        )
-        movie_metas = np.stack(
-            [build_movie_meta(self.movie_cache[mid], self.norm_stats) for mid in movie_ids]
-        )
-        user_ids_arr = np.full(n, user_idx, dtype=np.int64)
-        user_behavior_arr = np.tile(user_behavior, (n, 1)).astype(np.float32)
+        """Return P(click) scores for each movie_id. Shape: [len(movie_ids)].
 
+        Movie embeddings are precomputed at export time (see
+        precompute_movie_embeddings); only the user tower runs per request.
+        """
+        movie_embs = np.stack([self.movie_cache[mid].embedding for mid in movie_ids])
+        user_emb = self._encode_user(user_idx, user_behavior)
+        logits = movie_embs @ user_emb
+        return 1.0 / (1.0 + np.exp(-logits))
+
+    def _encode_user(self, user_idx: int, user_behavior: np.ndarray) -> np.ndarray:
+        """Run the user tower once and return the [output_dim] user embedding."""
         outputs = self._session.run(
-            ["score"],
+            ["user_embedding"],
             {
-                "user_ids": user_ids_arr,
-                "user_behavior": user_behavior_arr,
-                "movie_ids": movie_idxs,
-                "movie_meta": movie_metas,
+                "user_ids": np.array([user_idx], dtype=np.int64),
+                "user_behavior": user_behavior[np.newaxis, :].astype(np.float32),
             },
         )
-        return outputs[0]
+        return outputs[0][0]
 
     def build_user_behavior(self, user_data: dict) -> np.ndarray:
         """Build user_behavior vector [user_behavior_dim] from Redis feature dict.
@@ -138,7 +136,7 @@ class OnnxScorer:
         """Return (artifact_path, version_str) for the Production model.
 
         The returned path points to the model/ subfolder of the MLflow run, which
-        contains model.onnx, vocab.json, and movie_features.parquet.
+        contains user_tower.onnx, vocab.json, and movie_features.parquet.
         Uses a 10-second socket timeout so Cloud Run startup isn't blocked by an
         unreachable MLflow server.
         """
@@ -187,5 +185,6 @@ class OnnxScorer:
                 year=row["year"],
                 popularity_last_30d=row["popularity_last_30d"] or 0,
                 avg_rating=row["avg_rating"],
+                embedding=np.array(row["embedding"], dtype=np.float32),
             )
         return cache

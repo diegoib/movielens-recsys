@@ -52,6 +52,7 @@ _MOVIES = [
         "year": 2010,
         "popularity_last_30d": 9,
         "avg_rating": 4.0,
+        "embedding": [0.9, 0.0],
     },
     {
         "movie_id": 2,
@@ -62,6 +63,7 @@ _MOVIES = [
         "year": 2015,
         "popularity_last_30d": 5,
         "avg_rating": 3.5,
+        "embedding": [0.7, 0.0],
     },
     {
         "movie_id": 3,
@@ -72,6 +74,7 @@ _MOVIES = [
         "year": None,
         "popularity_last_30d": 2,
         "avg_rating": None,
+        "embedding": [0.3, 0.0],
     },
 ]
 
@@ -90,12 +93,14 @@ def _make_fake_scorer(tmp_path: Path) -> Any:
     pl.DataFrame(_MOVIES).write_parquet(buf)
     (tmp_path / "movie_features.parquet").write_bytes(buf.getvalue())
 
-    # model.onnx — replaced with a mock session, so content doesn't matter
-    (tmp_path / "model.onnx").write_bytes(b"placeholder")
+    # user_tower.onnx — replaced with a mock session, so content doesn't matter
+    (tmp_path / "user_tower.onnx").write_bytes(b"placeholder")
 
     with patch("src.serving.scorer.ort.InferenceSession") as mock_sess_cls:
         mock_sess = MagicMock()
-        mock_sess.run.return_value = [np.array([0.9, 0.7, 0.3], dtype=np.float32)]
+        # Single user embedding per request (batch size 1) — dot-product against the
+        # precomputed movie embeddings above reproduces the same 0.9/0.7/0.3 ordering.
+        mock_sess.run.return_value = [np.array([[1.0, 0.0]], dtype=np.float32)]
         mock_sess_cls.return_value = mock_sess
         scorer = OnnxScorer(model_dir)
         scorer._session = mock_sess  # keep the mock after __init__
