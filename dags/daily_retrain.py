@@ -1,6 +1,6 @@
-"""weekly_retrain — Airflow DAG that rebuilds the training dataset and retrains the model.
+"""daily_retrain — Airflow DAG that rebuilds the training dataset and retrains the model.
 
-Schedule: @weekly (every Sunday at 00:00 UTC)
+Schedule: @daily (every day at 00:00 UTC)
 
 Tasks:
   build_retrain_dataset → train_model → promote_model
@@ -29,7 +29,7 @@ _env = {
 }
 
 with DAG(
-    dag_id="weekly_retrain",
+    dag_id="daily_retrain",
     schedule_interval="@daily",
     start_date=datetime(2026, 1, 1),
     catchup=False,

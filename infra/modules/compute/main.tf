@@ -84,7 +84,7 @@ resource "google_compute_instance" "airflow_vm" {
   name           = "airflow-vm"
   project        = var.project_id
   zone           = var.zone
-  machine_type   = "e2-micro"
+  machine_type   = "e2-small"
   desired_status = "TERMINATED"
 
   boot_disk {
@@ -96,7 +96,9 @@ resource "google_compute_instance" "airflow_vm" {
 
   network_interface {
     network = "default"
-    access_config {}
+    access_config {
+      nat_ip = google_compute_address.airflow_vm_static_ip.address
+    }
   }
 
   metadata_startup_script = <<-EOT
@@ -275,6 +277,14 @@ resource "google_compute_firewall" "allow_redpanda_internal" {
   target_tags   = ["streaming-vm"]
 }
 
+# ── Static IP for airflow VM ──────────────────────────────────────────────────
+
+resource "google_compute_address" "airflow_vm_static_ip" {
+  name    = "airflow-vm-static-ip"
+  project = var.project_id
+  region  = var.region
+}
+
 # ── Outputs ────────────────────────────────────────────────────────────────────
 
 output "streaming_vm_static_ip" {
@@ -287,6 +297,10 @@ output "streaming_vm_external_ip" {
 
 output "streaming_vm_internal_ip" {
   value = google_compute_instance.streaming_vm.network_interface[0].network_ip
+}
+
+output "airflow_vm_static_ip" {
+  value = google_compute_address.airflow_vm_static_ip.address
 }
 
 output "datagen_vm_external_ip" {
