@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.11.0 (2026-06-16)
+
+### Features
+
+- Monitoring ([#13](https://github.com/diegoib/movielens-recsys/pull/13),
+  [`e6f63f7`](https://github.com/diegoib/movielens-recsys/commit/e6f63f743f6976b769c8ef74c9864b2a9e583b1e))
+
+
 ## v0.10.0 (2026-06-12)
 
 ### Features
