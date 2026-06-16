@@ -100,7 +100,7 @@ docker-build-training: ## Build, push training image to Artifact Registry and up
 # ── Serving ───────────────────────────────────────────────────────────────────
 
 serve-local: ## Run FastAPI + Redis locally on localhost:8000
-	docker compose up recsys-serving redis
+	docker compose -f compose/streaming.yml up recsys-serving redis
 
 serve-deploy: ## Build, push and deploy serving image to Cloud Run
 	docker build --platform linux/amd64 -f docker/serving/Dockerfile \
@@ -113,14 +113,15 @@ serve-deploy: ## Build, push and deploy serving image to Cloud Run
 # ── Streaming stack ───────────────────────────────────────────────────────────
 
 streaming-local: ## Start full local stack via Docker Compose
-	docker compose up
+	docker compose -f compose/streaming.yml up
 
 streaming-deploy: ## Deploy streaming stack to GCP preemptible VM
 	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- \
-		"cd ~/movielens-recsys && git pull && docker compose up -d"
+		"cd ~/movielens-recsys && git pull && docker compose -f compose/streaming.yml up -d"
 
 streaming-status: ## Check container status on streaming VM
-	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- "docker compose ps"
+	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- \
+		"cd ~/movielens-recsys && docker compose -f compose/streaming.yml ps"
 
 # ── Simulator 2 ───────────────────────────────────────────────────────────────
 
@@ -150,20 +151,20 @@ airflow-setup: ## First-time Airflow setup: clone repo on VM, init DB, start ser
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
 		"git clone https://github.com/$(GCP_PROJECT_ID)/movielens-recsys ~/movielens-recsys || (cd ~/movielens-recsys && git pull)"
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
-		"cd ~/movielens-recsys && docker compose -f docker/airflow/docker-compose.yml run --rm airflow-init && docker compose -f docker/airflow/docker-compose.yml up -d"
+		"cd ~/movielens-recsys && docker compose -f compose/airflow.yml run --rm airflow-init && docker compose -f compose/airflow.yml up -d"
 
 airflow-deploy: ## Pull latest DAGs on the VM and restart scheduler
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
-		"cd ~/movielens-recsys && git pull && docker compose -f docker/airflow/docker-compose.yml restart airflow-scheduler"
+		"cd ~/movielens-recsys && git pull && docker compose -f compose/airflow.yml restart airflow-scheduler"
 
 retrain-manual: ## Manually trigger the daily_retrain DAG
 	gcloud compute ssh airflow-vm --project $(GCP_PROJECT_ID) -- \
-		"cd ~/movielens-recsys && docker compose -f docker/airflow/docker-compose.yml exec airflow-scheduler airflow dags trigger daily_retrain"
+		"cd ~/movielens-recsys && docker compose -f compose/airflow.yml exec airflow-scheduler airflow dags trigger daily_retrain"
 
 # ── Monitoring ────────────────────────────────────────────────────────────────
 
 monitoring-local: ## Start Prometheus + Grafana locally
-	docker compose up prometheus grafana
+	docker compose -f compose/streaming.yml up prometheus grafana
 
 # ── Datagen VM ────────────────────────────────────────────────────────────────
 

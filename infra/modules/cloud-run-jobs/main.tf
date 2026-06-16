@@ -1,5 +1,10 @@
-variable "project_id" { type = string }
-variable "region"     { type = string }
+variable "project_id" {
+  type = string
+}
+
+variable "region" {
+  type = string
+}
 variable "jobs_sa" {
   type        = string
   description = "Service account email for the training job"

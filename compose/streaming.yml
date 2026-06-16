@@ -1,7 +1,7 @@
 services:
   mlflow-server:
     build:
-      context: .
+      context: ..
       dockerfile: docker/mlflow/Dockerfile
     ports:
       - "5000:5000"
@@ -69,7 +69,7 @@ services:
 
   redis-warmup:
     build:
-      context: .
+      context: ..
       dockerfile: docker/serving/Dockerfile
     depends_on:
       redis:
@@ -88,7 +88,7 @@ services:
 
   streaming-processor:
     build:
-      context: .
+      context: ..
       dockerfile: docker/streaming/Dockerfile
     environment:
       REDPANDA_BROKERS: redpanda:9092
@@ -102,7 +102,7 @@ services:
 
   recsys-serving:
     build:
-      context: .
+      context: ..
       dockerfile: docker/serving/Dockerfile
     ports:
       - "8000:8000"
@@ -114,7 +114,7 @@ services:
       MODEL_DIR: artifacts/models
       REDPANDA_BROKERS: redpanda:9092
     volumes:
-      - ./artifacts:/app/artifacts
+      - ../artifacts:/app/artifacts
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       interval: 15s
@@ -124,7 +124,7 @@ services:
 
   events-sink:
     build:
-      context: .
+      context: ..
       dockerfile: docker/serving/Dockerfile
     depends_on:
       redpanda-init:
@@ -142,7 +142,7 @@ services:
 
   simulator:
     build:
-      context: .
+      context: ..
       dockerfile: docker/simulator/Dockerfile
     depends_on:
       redpanda-init:
@@ -166,8 +166,8 @@ services:
   prometheus:
     image: prom/prometheus:v3.4.1
     volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./docker/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - ../docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../docker/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
@@ -183,8 +183,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
-      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
