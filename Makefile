@@ -100,7 +100,7 @@ docker-build-training: ## Build, push training image to Artifact Registry and up
 # ── Serving ───────────────────────────────────────────────────────────────────
 
 serve-local: ## Run FastAPI + Redis locally on localhost:8000
-	docker compose -f compose/streaming.yml up recsys-serving redis
+	docker compose -f compose/streaming.yml --env-file .env up recsys-serving redis
 
 serve-deploy: ## Build, push and deploy serving image to Cloud Run
 	docker build --platform linux/amd64 -f docker/serving/Dockerfile \
@@ -113,15 +113,15 @@ serve-deploy: ## Build, push and deploy serving image to Cloud Run
 # ── Streaming stack ───────────────────────────────────────────────────────────
 
 streaming-local: ## Start full local stack via Docker Compose
-	docker compose -f compose/streaming.yml up
+	docker compose -f compose/streaming.yml --env-file .env up
 
 streaming-deploy: ## Deploy streaming stack to GCP preemptible VM
 	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- \
-		"cd ~/movielens-recsys && git pull && docker compose -f compose/streaming.yml up -d"
+		"cd ~/movielens-recsys && git pull && docker compose -f compose/streaming.yml --env-file .env up -d"
 
 streaming-status: ## Check container status on streaming VM
 	gcloud compute ssh streaming-vm --project $(GCP_PROJECT_ID) -- \
-		"cd ~/movielens-recsys && docker compose -f compose/streaming.yml ps"
+		"cd ~/movielens-recsys && docker compose -f compose/streaming.yml --env-file .env ps"
 
 # ── Simulator 2 ───────────────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ retrain-manual: ## Manually trigger the daily_retrain DAG
 # ── Monitoring ────────────────────────────────────────────────────────────────
 
 monitoring-local: ## Start Prometheus + Grafana locally
-	docker compose -f compose/streaming.yml up prometheus grafana
+	docker compose -f compose/streaming.yml --env-file .env up prometheus grafana
 
 # ── Datagen VM ────────────────────────────────────────────────────────────────
 

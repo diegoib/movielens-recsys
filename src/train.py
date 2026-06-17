@@ -140,12 +140,9 @@ def _register_mlflow_model(trainer: L.Trainer, onnx_output: str, output_dir: str
 
     run_id = trainer.logger.run_id  # type: ignore[union-attr]
     with mlflow.start_run(run_id=run_id):
-        mlflow.onnx.log_model(
-            model_proto,
-            artifact_path="model",
-            registered_model_name="two-tower-recsys",
-        )
-        # Log vocab and movie features alongside the model so they're versioned together
+        # Log model artifacts to the run's artifact store (avoids the "Logged Model"
+        # artifact store introduced in MLflow 2.18+ which resolves GCS paths differently).
+        mlflow.onnx.log_model(model_proto, artifact_path="model")
         for filename in ["vocab.json", "movie_features.parquet"]:
             src = f"{output_dir}/{filename}"
             if src.startswith("gs://"):
@@ -158,7 +155,13 @@ def _register_mlflow_model(trainer: L.Trainer, onnx_output: str, output_dir: str
                     mlflow.log_artifact(tmp_path, artifact_path="model")
             else:
                 mlflow.log_artifact(src, artifact_path="model")
-    print(f"Model registered in MLflow: two-tower-recsys (run_id={run_id})")
+
+    # Register explicitly so the version lands in Staging (ready for promote.py).
+    model_version = mlflow.register_model(f"runs:/{run_id}/model", "two-tower-recsys")
+    mlflow.MlflowClient().transition_model_version_stage(
+        "two-tower-recsys", model_version.version, "Staging"
+    )
+    print(f"Model registered in MLflow: two-tower-recsys v{model_version.version} → Staging")
 
 
 def _export_serving_artifacts(
