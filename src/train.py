@@ -119,32 +119,30 @@ def main(cfg: TrainConfig) -> None:
 
 
 def _register_mlflow_model(trainer: L.Trainer, onnx_output: str, output_dir: str) -> None:
-    """Register ONNX + serving artifacts in MLflow (only when MLFLOW_TRACKING_URI is set)."""
+    """Register serving artifacts in MLflow (only when MLFLOW_TRACKING_URI is set).
+
+    Logs user_tower.onnx, vocab.json, and movie_features.parquet as plain
+    artifacts on the existing training run, then registers and stages the version.
+    mlflow.onnx.log_model is intentionally avoided: MLflow 2.18+ always creates a
+    "Logged Model" entity with its own artifact store, which fails if the server's
+    GCS artifact root is misconfigured.
+    """
     if not os.environ.get("MLFLOW_TRACKING_URI"):
         return
 
-    import io
     import tempfile
 
     import fsspec
     import mlflow
-    import mlflow.onnx
-    import onnx as onnx_lib
-
-    output_str = str(onnx_output)
-    if output_str.startswith("gs://"):
-        with fsspec.open(output_str, "rb") as f:
-            model_proto = onnx_lib.load(io.BytesIO(f.read()))  # type: ignore[arg-type]
-    else:
-        model_proto = onnx_lib.load(output_str)
 
     run_id = trainer.logger.run_id  # type: ignore[union-attr]
     with mlflow.start_run(run_id=run_id):
-        # Log model artifacts to the run's artifact store (avoids the "Logged Model"
-        # artifact store introduced in MLflow 2.18+ which resolves GCS paths differently).
-        mlflow.onnx.log_model(model_proto, artifact_path="model")
-        for filename in ["vocab.json", "movie_features.parquet"]:
-            src = f"{output_dir}/{filename}"
+        for src in [
+            onnx_output,
+            f"{output_dir}/vocab.json",
+            f"{output_dir}/movie_features.parquet",
+        ]:
+            filename = src.rsplit("/", 1)[-1]
             if src.startswith("gs://"):
                 with fsspec.open(src, "rb") as f:
                     data = f.read()  # type: ignore[union-attr]
