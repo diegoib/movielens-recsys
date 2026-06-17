@@ -58,6 +58,30 @@ class TrainConfig:
     export_onnx_after_train: bool = True
 
 
+def _ensure_mlflow_experiment(name: str) -> None:
+    """Ensure the MLflow experiment has a valid GCS artifact location.
+
+    If the experiment was created when MLFLOW_DEFAULT_ARTIFACT_ROOT was
+    misconfigured (e.g. GCP_PROJECT_ID unset), its artifact_location is
+    permanently broken in SQLite. Deleting it forces recreation with the
+    current server config on the next run.
+    """
+    artifact_root = os.environ.get("MLFLOW_DEFAULT_ARTIFACT_ROOT", "")
+    if not artifact_root.startswith("gs://"):
+        return
+
+    import mlflow
+
+    client = mlflow.MlflowClient()
+    exp = client.get_experiment_by_name(name)
+    if exp is not None and not exp.artifact_location.startswith("gs://"):
+        print(
+            f"[mlflow] Experiment '{name}' has invalid artifact_location "
+            f"({exp.artifact_location!r}). Deleting so it is recreated correctly."
+        )
+        client.delete_experiment(exp.experiment_id)
+
+
 def main(cfg: TrainConfig) -> None:
     num_workers = 0 if cfg.fast_dev_run else cfg.num_workers
 
@@ -83,6 +107,7 @@ def main(cfg: TrainConfig) -> None:
     lit = TwoTowerLightningModule(model, lr=cfg.lr)
 
     if os.environ.get("MLFLOW_TRACKING_URI"):
+        _ensure_mlflow_experiment("two-tower-recsys")
         logger: CSVLogger | MLFlowLogger = MLFlowLogger(experiment_name="two-tower-recsys")
     else:
         logger = CSVLogger(save_dir="artifacts/logs")
