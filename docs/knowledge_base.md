@@ -14,11 +14,12 @@ Guía didáctica para data scientists que quieren entender el proyecto de recome
 6. [ONNX: exportar y servir modelos en producción](#6-onnx-exportar-y-servir-modelos-en-producción)
 7. [El truco de la torre de películas: embeddings precomputados](#7-el-truco-de-la-torre-de-películas-embeddings-precomputados)
 8. [PyFlink: procesamiento de eventos en tiempo real](#8-pyflink-procesamiento-de-eventos-en-tiempo-real)
-9. [Flujo de datos online](#9-flujo-de-datos-online)
-10. [Inferencia en producción: de una petición a una recomendación](#10-inferencia-en-producción-de-una-petición-a-una-recomendación)
-11. [Simulador online (Simulador 2)](#11-simulador-online-simulador-2)
-12. [Prometheus y Grafana: observabilidad](#12-prometheus-y-grafana-observabilidad)
-13. [Loop de reentrenamiento](#13-loop-de-reentrenamiento)
+9. [Redis: el feature store en tiempo real](#9-redis-el-feature-store-en-tiempo-real)
+10. [Flujo de datos online](#10-flujo-de-datos-online)
+11. [Inferencia en producción: de una petición a una recomendación](#11-inferencia-en-producción-de-una-petición-a-una-recomendación)
+12. [Simulador online (Simulador 2)](#12-simulador-online-simulador-2)
+13. [Prometheus y Grafana: observabilidad](#13-prometheus-y-grafana-observabilidad)
+14. [Loop de reentrenamiento](#14-loop-de-reentrenamiento)
 
 ---
 
@@ -776,29 +777,117 @@ def _compute_features(entries, now_ts):
 
 El `genres_vector` que incluye cada evento (adjuntado por el servidor FastAPI al publicar en RedPanda) es el vector de géneros de la película clickada. El promedio de estos vectores a lo largo de los clicks recientes es la afinidad de género del usuario.
 
-### Redis: el feature store en tiempo real
-
-Los features calculados se almacenan en Redis con `HSET` (Hash SET): una clave por usuario, con múltiples campos:
-
-```
-user:12345:
-    genre_affinity_last_7d → "[0.3, 0.0, 0.5, ...]"  (JSON)
-    n_clicks_last_7d       → "7"
-    genre_affinity_last_1h → "[0.0, 0.0, 0.8, ...]"
-    n_clicks_last_1h       → "2"
-    days_since_last_activity → "0.08"
-TTL: 604800 segundos (7 días)
-```
-
-El TTL automático limpia usuarios inactivos. Sin él, Redis crecería indefinidamente con datos de usuarios que ya no visitan la plataforma.
-
-El patrón "fire-and-forget" para Redis significa que si la escritura falla (timeout, conexión perdida), el evento se pierde pero el stream no se detiene. En producción real se añadiría un dead-letter sink para reintentar.
+El formato exacto de la escritura en Redis, el TTL, y el patrón fire-and-forget se explican en la siguiente sección, [Redis: el feature store en tiempo real](#9-redis-el-feature-store-en-tiempo-real).
 
 [↑ Volver al índice](#índice)
 
 ---
 
-## 9. Flujo de datos online
+## 9. Redis: el feature store en tiempo real
+
+### ¿Qué es Redis?
+
+Redis (Remote Dictionary Server) es una base de datos en memoria de clave-valor. A diferencia de una base de datos relacional (donde los datos están en disco y las queries tardan milisegundos o más), Redis mantiene todos los datos en RAM y responde en microsegundos.
+
+Es la herramienta estándar de la industria para lo que se llama un **feature store en tiempo real**: el lugar donde se almacenan los features de los usuarios (calculados por el sistema de streaming) para que el servidor de inferencia pueda leerlos con latencia mínima al atender cada petición.
+
+### ¿Por qué Redis y no una base de datos convencional?
+
+La latencia de serving impone restricciones estrictas. Una petición a `/recommendations` tiene que terminar en < 100ms para que el usuario no lo note. Dentro de ese presupuesto, hay que:
+
+- Leer los features del usuario de algún almacén
+- Correr el modelo ONNX
+- Hacer el dot product con 200 candidatos
+- Devolver la respuesta
+
+Con PostgreSQL o cualquier base de datos en disco, la lectura de features costaría 5-20ms de latencia de red + I/O. Con Redis, cuesta < 1ms. La diferencia es estructural: Redis no va a disco.
+
+La contrapartida es que Redis es **volátil**: si el proceso se reinicia sin persistencia configurada, los datos se pierden. Por eso en este proyecto Redis es el feature store online (volátil, rápido) y GCS es el almacén persistente (durable, lento). Son dos capas complementarias.
+
+### Estructura de datos: HSET
+
+Redis tiene múltiples estructuras de datos (strings, listas, sets, sorted sets...). Para los features de usuario usamos **HSET** (Hash), que almacena múltiples campos bajo una misma clave:
+
+```
+CLAVE: "user:12345"
+CAMPOS:
+    genre_affinity_last_7d   → "[0.3, 0.0, 0.5, 0.0, ...]"  ← JSON list
+    n_clicks_last_7d         → "7"
+    genre_affinity_last_1h   → "[0.0, 0.0, 0.8, 0.0, ...]"
+    n_clicks_last_1h         → "2"
+    days_since_last_activity → "0.08"
+```
+
+La alternativa habría sido guardar un JSON completo en una clave string (`SET user:12345 '{"genre_affinity_last_7d": [...], ...}'`). El Hash tiene una ventaja: permite leer o actualizar un campo individual sin deserializar y reserializar el JSON completo. En la práctica aquí se leen y escriben todos los campos a la vez, así que la diferencia es menor, pero el Hash es semánticamente más limpio.
+
+Los valores de tipo lista se serializan a JSON (`json.dumps(v)`) porque Redis solo almacena strings. Al leer, hay que hacer el `json.loads()` inverso.
+
+### Cómo escribe PyFlink
+
+El procesador de PyFlink escribe con `HSET` y establece un TTL de 7 días:
+
+```python
+self._redis.hset(
+    f"user:{user_id}",
+    mapping={
+        k: json.dumps(v) if isinstance(v, list) else str(v)
+        for k, v in features.items()
+    },
+)
+self._redis.expire(f"user:{user_id}", 7 * 24 * 3600)  # 604800 segundos
+```
+
+El TTL (Time To Live) hace que Redis elimine automáticamente la clave si no recibe ningún click del usuario en 7 días. Sin él, Redis acumularía datos de todos los usuarios que alguna vez visitaron la plataforma, creciendo indefinidamente.
+
+El patrón **fire-and-forget** significa que si la escritura falla (timeout de red, Redis caído momentáneamente), el procesador de Flink registra el error pero no detiene el stream. El evento de click se procesa pero el feature store queda momentáneamente desactualizado. En producción real se añadiría un dead-letter sink para reintentar escrituras fallidas.
+
+### Cómo lee FastAPI
+
+En `src/serving/app.py`, al recibir una petición de recomendaciones:
+
+```python
+user_data = redis_client.hgetall(f"user:{user_id}")
+# Resultado: {'genre_affinity_last_7d': '[0.3, 0.0, ...]', 'n_clicks_last_7d': '7', ...}
+# Si el usuario no existe: {}  (dict vacío, se maneja como cold start)
+```
+
+`hgetall` devuelve todos los campos del hash en un solo round-trip a Redis. La librería `redis-py` lo convierte directamente a un dict Python.
+
+### Redis Warmup: precalentar el feature store
+
+Al arrancar el stack por primera vez, Redis está vacío. Los primeros usuarios que lleguen serían todos "cold start" y recibirían recomendaciones no personalizadas.
+
+Para evitar esto, el servicio `redis-warmup` (`src/features/load_warm_users.py`) lee el dataset de training y preescribe en Redis las features históricas de todos los usuarios antes de que el sistema empiece a recibir tráfico:
+
+```python
+# Para cada usuario del dataset de training:
+redis_client.hset(f"user:{user_id}", mapping={
+    "genre_affinity_last_7d": json.dumps(user_features["genre_affinity_last_7d"]),
+    "n_clicks_last_7d": str(user_features["n_clicks_last_7d"]),
+    # ...
+})
+```
+
+Esto es el equivalente de un "warm start": el sistema arranca con el conocimiento histórico de los usuarios, y PyFlink solo necesita actualizar esas features a medida que llegan nuevos eventos.
+
+### Redis en el contexto del stack
+
+```
+                    ESCRIBE                      LEE
+PyFlink   ──────────────────────→  Redis  ←──────────────  FastAPI
+(cada click del usuario)          (RAM)         (cada request de recomendaciones)
+
+redis-warmup ───────────────────→  Redis
+(al arrancar, features históricas)
+```
+
+Redis es el punto de encuentro entre el sistema de streaming y el sistema de serving. Sin él, habría que hacer una query a una base de datos transaccional en cada petición, o calcular los features on-the-fly en el momento del serving (lo que requeriría acceso al historial completo de eventos del usuario).
+
+[↑ Volver al índice](#índice)
+
+---
+
+## 10. Flujo de datos online
 
 ### Visión general
 
@@ -894,7 +983,7 @@ redis → redis-warmup → recsys-serving
 
 ---
 
-## 10. Inferencia en producción: de una petición a una recomendación
+## 11. Inferencia en producción: de una petición a una recomendación
 
 ### El flujo completo de una petición
 
@@ -996,7 +1085,7 @@ Después de generar las recomendaciones, FastAPI las publica en el topic `model-
 
 ---
 
-## 11. Simulador online (Simulador 2)
+## 12. Simulador online (Simulador 2)
 
 ### ¿Por qué necesitamos un simulador?
 
@@ -1097,7 +1186,7 @@ El `UserPool` no necesita locks porque asyncio es single-threaded: no hay dos co
 
 ---
 
-## 12. Prometheus y Grafana: observabilidad
+## 13. Prometheus y Grafana: observabilidad
 
 ### ¿Qué es observabilidad?
 
@@ -1208,7 +1297,7 @@ El **score distribution** es especialmente útil para detectar problemas del mod
 
 ---
 
-## 13. Loop de reentrenamiento
+## 14. Loop de reentrenamiento
 
 ### El ciclo de mejora continua
 
